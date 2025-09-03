@@ -13,15 +13,3 @@ public sealed record AuditEntry(
     string Action,
     string Severity
 );
-
-/// <summary>
-/// Audit statistics for reporting
-/// </summary>
-public sealed record AuditStatistics(
-    int TotalViolations,
-    int TotalRepairs,
-    int ValidationRuns,
-    Dictionary<string, int> ViolationsByRule,
-    Dictionary<string, int> ViolationsBySeverity,
-    DateTime? LastRunDate
-);
