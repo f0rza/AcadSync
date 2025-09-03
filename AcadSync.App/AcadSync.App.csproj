@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AcadSync.Processor\AcadSync.Processor.csproj" />
+    <ProjectReference Include="..\AcadSync.Audit\AcadSync.Audit.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -26,6 +27,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="test-rules.yaml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Logging;
+using AcadSync.Audit.Interfaces;
+using AcadSync.Audit.Extensions;
 
 namespace AcadSync.Processor;
 
@@ -116,7 +118,7 @@ public class ExtPropValidationService
                     );
 
                     // Write audit record
-                    await _auditRepository.WriteAuditAsync(violation, staffId, "Auto-repaired by AcadSync");
+                    await _auditRepository.WriteAuditAsync(violation.ToAuditEntry(), staffId, "Auto-repaired by AcadSync");
 
                     repairedCount++;
                     _logger.LogDebug("Repaired {EntityType}#{EntityId}.{PropertyCode}: '{OldValue}' → '{NewValue}'",
@@ -129,7 +131,7 @@ public class ExtPropValidationService
                         violation.EntityType, violation.EntityId, violation.PropertyCode);
                     
                     // Write audit record for failed repair
-                    await _auditRepository.WriteAuditAsync(violation, staffId, $"Repair failed: {ex.Message}");
+                    await _auditRepository.WriteAuditAsync(violation.ToAuditEntry(), staffId, $"Repair failed: {ex.Message}");
                 }
             }
 

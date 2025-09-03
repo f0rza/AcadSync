@@ -1,4 +1,7 @@
 ﻿using AcadSync.Processor;
+using AcadSync.Audit.Interfaces;
+using AcadSync.Audit.Repositories;
+using AcadSync.Audit.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;

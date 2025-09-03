@@ -1,4 +1,6 @@
-namespace AcadSync.Processor;
+using AcadSync.Audit.Models;
+
+namespace AcadSync.Audit.Interfaces;
 
 /// <summary>
 /// Repository interface for audit operations against AcadSync audit database
@@ -8,7 +10,7 @@ public interface IAuditRepository
     /// <summary>
     /// Write audit record for a violation/repair
     /// </summary>
-    Task WriteAuditAsync(Violation violation, int staffId, string? notes = null);
+    Task WriteAuditAsync(AuditEntry auditEntry, int staffId, string? notes = null);
 
     /// <summary>
     /// Start a new validation run and return the run ID
@@ -40,15 +42,3 @@ public interface IAuditRepository
     /// </summary>
     Task CleanupOldAuditRecordsAsync(int retentionDays);
 }
-
-/// <summary>
-/// Audit statistics for reporting
-/// </summary>
-public sealed record AuditStatistics(
-    int TotalViolations,
-    int TotalRepairs,
-    int ValidationRuns,
-    Dictionary<string, int> ViolationsByRule,
-    Dictionary<Severity, int> ViolationsBySeverity,
-    DateTime? LastRunDate
-);

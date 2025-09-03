@@ -2,13 +2,9 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Reflection;
+using AcadSync.Audit.Interfaces;
 
-namespace AcadSync.Processor;
-
-public interface IDatabaseInitializationService
-{
-    Task InitializeAsync();
-}
+namespace AcadSync.Audit.Services;
 
 public class DatabaseInitializationService : IDatabaseInitializationService
 {
@@ -73,13 +69,13 @@ public class DatabaseInitializationService : IDatabaseInitializationService
         try
         {
             var assembly = Assembly.GetExecutingAssembly();
-            var resourceName = "AcadSync.Processor.SqlScripts.CreateAuditTable.sql";
+            var resourceName = "AcadSync.Audit.SqlScripts.CreateAuditDatabase.sql";
 
             using var stream = assembly.GetManifestResourceStream(resourceName);
             if (stream == null)
             {
                 // Fallback to file system if embedded resource not found
-                var scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SqlScripts", "CreateAuditTable.sql");
+                var scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SqlScripts", "CreateAuditDatabase.sql");
                 if (File.Exists(scriptPath))
                 {
                     _logger.LogInformation("Loading SQL script from file system: {Path}", scriptPath);

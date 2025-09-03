@@ -1,7 +1,9 @@
 using Dapper;
 using Microsoft.Data.SqlClient;
+using AcadSync.Audit.Interfaces;
+using AcadSync.Audit.Models;
 
-namespace AcadSync.Processor;
+namespace AcadSync.Audit.Repositories;
 
 /// <summary>
 /// Dapper-based repository for AcadSync audit database operations
@@ -15,7 +17,7 @@ public class AuditRepository : IAuditRepository
         _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
     }
 
-    public async Task WriteAuditAsync(Violation violation, int staffId, string? notes = null)
+    public async Task WriteAuditAsync(AuditEntry auditEntry, int staffId, string? notes = null)
     {
         using var connection = new SqlConnection(_connectionString);
         
@@ -30,14 +32,14 @@ public class AuditRepository : IAuditRepository
 
         await connection.ExecuteAsync(sql, new
         {
-            RuleId = violation.RuleId,
-            EntityType = violation.EntityType,
-            EntityId = violation.EntityId,
-            PropertyCode = violation.PropertyCode,
-            OldValue = violation.CurrentValue,
-            NewValue = violation.ProposedValue,
-            Action = violation.Action,
-            Severity = violation.Severity.ToString(),
+            RuleId = auditEntry.RuleId,
+            EntityType = auditEntry.EntityType,
+            EntityId = auditEntry.EntityId,
+            PropertyCode = auditEntry.PropertyCode,
+            OldValue = auditEntry.CurrentValue,
+            NewValue = auditEntry.ProposedValue,
+            Action = auditEntry.Action,
+            Severity = auditEntry.Severity,
             Operator = $"staff:{staffId}",
             Notes = notes
         });
@@ -176,7 +178,7 @@ public class AuditRepository : IAuditRepository
         var ruleStats = (await multi.ReadAsync<(string RuleId, int Count)>())
             .ToDictionary(x => x.RuleId, x => x.Count);
         var severityStats = (await multi.ReadAsync<(string Severity, int Count)>())
-            .ToDictionary(x => Enum.Parse<Severity>(x.Severity), x => x.Count);
+            .ToDictionary(x => x.Severity, x => x.Count);
         var runStats = await multi.ReadSingleAsync<(int ValidationRuns, DateTime? LastRunDate)>();
 
         return new AuditStatistics(
