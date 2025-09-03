@@ -1,0 +1,226 @@
+﻿# Extended Property Rule Language (EPRL) v1
+# Sample rules for Anthology Student Extended Property validation
+# Based on common scenarios: Nursing program, International students, Document compliance
+
+apiVersion: eprl.v1
+tenant: "acme-university"
+ruleset:
+  id: "extprops-core"
+  name: "Core Extended Properties Validation"
+  version: 1
+  effectiveFrom: "2025-09-01"
+  owner: "registrar@acme.edu"
+  metadata:
+    environment: "prod"
+    culture: "en-CA"
+
+defaults:
+  mode: "validate"              # validate|repair|simulate
+  severity: "error"
+  timezone: "America/Toronto"
+
+rules:
+  # ========== NURSING PROGRAM RULES ==========
+  
+  - id: "student.immunization.expiry"
+    name: "Students in NURS must have ImmunizationExpiryDate in future"
+    scope:
+      entity: "Student"
+    when:
+      all:
+        - eq: { path: "programCode", value: "NURS" }
+        - in: { path: "status", values: ["Active", "FutureStart"] }
+        - eq: { path: "campus", value: "MAIN" }
+    requirements:
+      - property: "ImmunizationExpiryDate"
+        type: "date"
+        required: true
+        constraints:
+          gte: "2025-09-04"  # must be in the future (example date)
+        normalize:
+          dateFormat: "yyyy-MM-dd"
+        source:
+          try:
+            - path: "documents[DocType=IMM].fields.ExpiryDate"
+            - value: "2026-09-01"  # default 1 year from now
+        onFailure:
+          severity: "block"
+          actions:
+            - "repair:set-default"
+            - "notify:teams"
+            - "create-task:Upload Immunization Proof"
+    mode: "repair"
+
+  - id: "student.nursing.clinical.clearance"
+    name: "Nursing students must have clinical clearance documentation"
+    scope:
+      entity: "Student"
+    when:
+      eq: { path: "programCode", value: "NURS" }
+    requirements:
+      - property: "ClinicalClearanceStatus"
+        type: "string"
+        required: true
+        constraints:
+          in: ["Approved", "Pending", "Conditional"]
+        normalize:
+          upper: true
+          trim: true
+        source:
+          try:
+            - value: "Pending"
+        onFailure:
+          actions: ["repair:upsert", "audit:annotate"]
+
+  # ========== INTERNATIONAL STUDENT RULES ==========
+  
+  - id: "student.citizenship.flag"
+    name: "International students must have ExtProp 'InternationalFlag' = true"
+    scope: 
+      entity: "Student"
+    when:
+      any:
+        - eq: { path: "citizenship", value: "International" }
+        - eq: { path: "visaType", value: "StudyPermit" }
+        - ne: { path: "country", value: "CA" }
+    requirements:
+      - property: "InternationalFlag"
+        type: "bool"
+        required: true
+        constraints:
+          eq: true
+        normalize:
+          mapBool: 
+            truthy: ["Y", "true", "1", "yes"]
+            falsy: ["N", "false", "0", "no", ""]
+        source:
+          try:
+            - path: "admissions.Applicant.IsInternational"
+            - value: true
+        onFailure:
+          severity: "error"
+          actions: ["repair:upsert", "audit:annotate"]
+
+  - id: "student.study.permit.expiry"
+    name: "International students must have valid study permit expiry"
+    scope:
+      entity: "Student"
+    when:
+      eq: { path: "visaType", value: "StudyPermit" }
+    requirements:
+      - property: "StudyPermitExpiry"
+        type: "date"
+        required: true
+        constraints:
+          gte: "2025-09-04"  # must be in future
+        normalize:
+          dateFormat: "yyyy-MM-dd"
+        onFailure:
+          severity: "block"
+          actions: ["notify:email", "create-task:Renew Study Permit"]
+
+  # ========== CANADIAN TAX RESIDENCY RULES ==========
+  
+  - id: "student.finance.tax-residency"
+    name: "Canadian students must have complete tax residency structure"
+    scope: 
+      entity: "Student"
+    when:
+      eq: { path: "country", value: "CA" }
+    requirements:
+      - property: "ProvinceCode"
+        type: "lookup"
+        required: true
+        lookup:
+          list: ["AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC", "SK", "YT"]
+        normalize:
+          upper: true
+          trim: true
+        source:
+          try:
+            - path: "address.ProvinceCode"
+            - value: "ON"  # default to Ontario
+      - property: "PSTExempt"
+        type: "bool"
+        required: true
+        constraints:
+          anyOf: [true, false]  # must be explicitly set
+        normalize:
+          mapBool:
+            truthy: ["Y", "true", "1", "yes"]
+            falsy: ["N", "false", "0", "no"]
+        source:
+          try:
+            - value: false  # default to not exempt
+    onGroupFailure:
+      actions: ["notify:digest"]
+
+  # ========== DOCUMENT COMPLIANCE RULES ==========
+  
+  - id: "doc.oepp.approval.link"
+    name: "OEPP documents must carry link extprop to related hold"
+    scope: 
+      entity: "Document"
+    when:
+      eq: { path: "documentTypeCode", value: "OEPP561" }
+    requirements:
+      - property: "RelatedHoldCode"
+        type: "string"
+        required: true
+        constraints:
+          regex: "^OEPP_[A-Z0-9_]+$"
+        normalize:
+          upper: true
+          trim: true
+        source:
+          try:
+            - value: "OEPP_IMM"  # default hold code
+        onFailure:
+          actions: ["repair:upsert", "notify:email"]
+
+  - id: "doc.transcript.official.flag"
+    name: "Official transcripts must be flagged as verified"
+    scope:
+      entity: "Document"
+    when:
+      eq: { path: "documentTypeCode", value: "TRANSCRIPT_OFFICIAL" }
+    requirements:
+      - property: "VerificationStatus"
+        type: "string"
+        required: true
+        constraints:
+          in: ["Verified", "Pending", "Rejected"]
+        normalize:
+          upper: true
+          trim: true
+        source:
+          try:
+            - value: "Pending"
+        onFailure:
+          severity: "warning"
+          actions: ["audit:annotate"]
+
+  # ========== FINANCIAL AID RULES ==========
+  
+  - id: "student.finaid.dependency.status"
+    name: "Students with financial aid must have dependency status"
+    scope:
+      entity: "Student"
+    when:
+      exists: { path: "ext.FinancialAidEligible" }
+    requirements:
+      - property: "DependencyStatus"
+        type: "string"
+        required: true
+        constraints:
+          in: ["Dependent", "Independent"]
+        normalize:
+          upper: true
+          trim: true
+        source:
+          try:
+            - path: "finaid.DependencyOverride"
+            - value: "Dependent"  # conservative default
+        onFailure:
+          severity: "warning"
+          actions: ["repair:upsert", "create-task:Verify Dependency Status"]
