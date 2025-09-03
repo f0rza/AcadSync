@@ -9,7 +9,7 @@ public static class Evaluator
         var defaults = doc.Defaults ?? new Defaults();
         foreach (var rule in doc.Rules)
         {
-            foreach (var entity in entities.Where(e => e.EntityType.Equals(rule.Scope.entity, StringComparison.OrdinalIgnoreCase)))
+            foreach (var entity in entities.Where(e => e.EntityType.Equals(rule.Scope.Entity, StringComparison.OrdinalIgnoreCase)))
             {
                 if (!Matches(rule.When, entity)) continue;
 
