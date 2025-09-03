@@ -29,7 +29,10 @@ public class Defaults
     public string? Timezone { get; set; }
 }
 
-public sealed record Scope(string entity); // Student|Course|Section|Document|Group|Enrollment|Account|Program
+public sealed record Scope
+{
+    public string Entity { get; init; } = "";
+}; // Student|Course|Section|Document|Group|Enrollment|Account|Program
 
 public sealed record Compare(string path, object? value = null);
 public sealed record MultiCompare(string path, List<object> values);
