@@ -1,4 +1,4 @@
-﻿namespace AcadSync.Processor;
+﻿namespace AcadSync.Processor.Models.Domain;
 
 public enum EprlMode { validate, repair, simulate }
 public enum Severity { info, warning, error, block }

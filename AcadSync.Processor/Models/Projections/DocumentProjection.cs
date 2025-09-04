@@ -1,4 +1,6 @@
-﻿namespace AcadSync.Processor;
+﻿namespace AcadSync.Processor.Models.Projections;
+
+using AcadSync.Processor.Utilities;
 
 public sealed record DocumentProjection(
     long id,

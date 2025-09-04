@@ -1,4 +1,7 @@
 ﻿using AcadSync.Processor;
+using AcadSync.Processor.Models.Domain;
+using AcadSync.Processor.Models.Projections;
+using AcadSync.Processor.Utilities;
 using AcadSync.Audit.Interfaces;
 using AcadSync.Audit.Repositories;
 using AcadSync.Audit.Services;

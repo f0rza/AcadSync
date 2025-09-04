@@ -1,3 +1,6 @@
+using AcadSync.Processor.Models.Domain;
+using AcadSync.Processor.Models.Projections;
+
 namespace AcadSync.Processor.Interfaces;
 
 /// <summary>

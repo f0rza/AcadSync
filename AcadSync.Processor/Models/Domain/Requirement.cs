@@ -1,4 +1,4 @@
-﻿namespace AcadSync.Processor;
+﻿namespace AcadSync.Processor.Models.Domain;
 
 // ---- Requirements ----
 public sealed record Requirement

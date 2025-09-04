@@ -1,4 +1,4 @@
-﻿namespace AcadSync.Processor;
+﻿namespace AcadSync.Processor.Models.Domain;
 
 // ---- Conditions (composable) ----
 public sealed record Condition

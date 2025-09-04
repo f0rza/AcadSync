@@ -183,7 +183,7 @@ public static class Evaluator
         return lower ? cmp >= 0 : cmp <= 0;
     }
 
-    private static string? Normalize(string? value, Normalization? n, ValueType type)
+    private static string? Normalize(string? value, Normalization? n, Models.Domain.ValueType type)
     {
         if (value is null) return null;
         var s = value;
@@ -195,12 +195,12 @@ public static class Evaluator
             var padChar = (n.padLeft.padChar ?? "0")[0];
             s = s.PadLeft(n.padLeft.length, padChar);
         }
-        if (type == ValueType.@bool && n?.mapBool is not null)
+        if (type == Models.Domain.ValueType.@bool && n?.mapBool is not null)
         {
             if (n.mapBool.truthy?.Contains(s, StringComparer.OrdinalIgnoreCase) == true) s = "true";
             else if (n.mapBool.falsy?.Contains(s, StringComparer.OrdinalIgnoreCase) == true) s = "false";
         }
-        if (type == ValueType.@date && !string.IsNullOrWhiteSpace(n?.dateFormat))
+        if (type == Models.Domain.ValueType.@date && !string.IsNullOrWhiteSpace(n?.dateFormat))
         {
             if (DateTimeOffset.TryParse(s, out var dt))
                 s = dt.ToString("yyyy-MM-dd");
@@ -208,13 +208,13 @@ public static class Evaluator
         return s;
     }
 
-    private static string? CoerceToString(object? val, ValueType type, Normalization? n)
+    private static string? CoerceToString(object? val, Models.Domain.ValueType type, Normalization? n)
     {
         if (val is null) return null;
         return type switch
         {
-            ValueType.@date when DateTimeOffset.TryParse(val.ToString(), out var dt) => dt.ToString("yyyy-MM-dd"),
-            ValueType.@bool => (val is bool b ? b : new[] { "true", "1", "y", "yes" }.Contains(val.ToString()!.ToLowerInvariant())).ToString().ToLowerInvariant(),
+            Models.Domain.ValueType.@date when DateTimeOffset.TryParse(val.ToString(), out var dt) => dt.ToString("yyyy-MM-dd"),
+            Models.Domain.ValueType.@bool => (val is bool b ? b : new[] { "true", "1", "y", "yes" }.Contains(val.ToString()!.ToLowerInvariant())).ToString().ToLowerInvariant(),
             _ => val.ToString()
         };
     }
