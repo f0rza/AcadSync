@@ -34,22 +34,64 @@ public sealed record Scope
     public string Entity { get; init; } = "";
 }; // Student|Course|Section|Document|Group|Enrollment|Account|Program
 
-public sealed record Compare(string path, object? value = null);
-public sealed record MultiCompare(string path, List<object> values);
-public sealed record PathOnly(string path);
+public sealed record Compare
+{
+    public string path { get; init; } = string.Empty;
+    public object? value { get; init; }
+}
 
-public sealed record Lookup(List<string> list);
-public sealed record Normalization(
-    bool? upper = null,
-    bool? trim = null,
-    PadLeft? padLeft = null,
-    MapBool? mapBool = null,
-    string? dateFormat = null   // normalize incoming date text -> ISO yyyy-MM-dd
-);
-public sealed record PadLeft(int length, string padChar = "0");
-public sealed record MapBool(List<string>? truthy = null, List<string>? falsy = null);
+public sealed record MultiCompare
+{
+    public string path { get; init; } = string.Empty;
+    public List<object> values { get; init; } = new();
+}
 
-public sealed record Source(List<SourceStep> @try);
-public sealed record SourceStep(string? path = null, string? sql = null, object? value = null, string? expression = null);
+public sealed record PathOnly
+{
+    public string path { get; init; } = string.Empty;
+}
 
-public sealed record ActionsBlock(Severity? severity = null, List<string>? actions = null);
+public sealed record Lookup
+{
+    public List<string> list { get; init; } = new();
+}
+
+public sealed record Normalization
+{
+    public bool? upper { get; init; }
+    public bool? trim { get; init; }
+    public PadLeft? padLeft { get; init; }
+    public MapBool? mapBool { get; init; }
+    public string? dateFormat { get; init; }   // normalize incoming date text -> ISO yyyy-MM-dd
+}
+
+public sealed record PadLeft
+{
+    public int length { get; init; }
+    public string padChar { get; init; } = "0";
+}
+
+public sealed record MapBool
+{
+    public List<string>? truthy { get; init; }
+    public List<string>? falsy { get; init; }
+}
+
+public sealed record Source
+{
+    public List<SourceStep> @try { get; init; } = new();
+}
+
+public sealed record SourceStep
+{
+    public string? path { get; init; }
+    public string? sql { get; init; }
+    public object? value { get; init; }
+    public string? expression { get; init; }
+}
+
+public sealed record ActionsBlock
+{
+    public Severity? severity { get; init; }
+    public List<string>? actions { get; init; }
+}

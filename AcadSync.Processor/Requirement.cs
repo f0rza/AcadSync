@@ -1,13 +1,14 @@
 ﻿namespace AcadSync.Processor;
 
 // ---- Requirements ----
-public sealed record Requirement(
-    string property,
-    ValueType type,
-    bool required,
-    RequirementConstraints? constraints = null,
-    Lookup? lookup = null,
-    Normalization? normalize = null,
-    Source? source = null,
-    ActionsBlock? onFailure = null
-);
+public sealed record Requirement
+{
+    public string property { get; init; } = string.Empty;
+    public ValueType type { get; init; }
+    public bool required { get; init; }
+    public RequirementConstraints? constraints { get; init; }
+    public Lookup? lookup { get; init; }
+    public Normalization? normalize { get; init; }
+    public Source? source { get; init; }
+    public ActionsBlock? onFailure { get; init; }
+}
