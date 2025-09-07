@@ -22,24 +22,25 @@ public class AnthologyExtPropRepository : IExtPropRepository
         using var connection = new SqlConnection(_connectionString);
         
         var sql = @"
-            SELECT 
+            SELECT
                 s.SyStudentId as Id,
-                s.StudentNumber,
-                s.ProgramCode,
-                s.Status,
-                s.Campus,
-                s.Citizenship,
-                s.VisaType,
-                s.Country,
+                s.StuNum as StudentNumber,
+                CAST(s.AdProgramID AS NVARCHAR(50)) as ProgramCode,
+                'Active' as Status, -- Default status since no Status column exists
+                'Main' as Campus, -- Default campus since no Campus column exists
+                'Unknown' as Citizenship, -- Default since no Citizenship column exists
+                'Unknown' as VisaType, -- Default since no VisaType column exists
+                'Unknown' as Country, -- Default since no Country column exists
                 -- Extended Properties
-                ep.PropertyCode,
-                epv.Value as ExtValue
-            FROM dbo.SyStudent s WITH (NOLOCK)
-            LEFT JOIN dbo.SyExtendedPropertyValue epv WITH (NOLOCK) ON epv.EntityTable = 'SyStudent' AND epv.EntityId = s.SyStudentId
-            LEFT JOIN dbo.SyExtendedProperty ep WITH (NOLOCK) ON ep.SyExtendedPropertyId = epv.SyExtendedPropertyId
-            WHERE s.IsActive = 1
-                AND (@ProgramFilter IS NULL OR s.ProgramCode = @ProgramFilter)
-                AND (@StatusFilter IS NULL OR s.Status = @StatusFilter)
+                ep.Name as PropertyCode,
+                COALESCE(epv.StringValue, CAST(epv.DecimalValue AS NVARCHAR(512)), CAST(epv.DateTimeValue AS NVARCHAR(512)), CAST(epv.BooleanValue AS NVARCHAR(512)), epv.MultiValue) as ExtValue
+            FROM dbo.syStudent s WITH (NOLOCK)
+            LEFT JOIN dbo.SyExtendedPropertyValue epv WITH (NOLOCK) ON epv.EntityId = s.SyStudentId
+            LEFT JOIN dbo.SyExtendedPropertyDefinition ep WITH (NOLOCK) ON ep.SyExtendedPropertyDefinitionId = epv.SyExtendedPropertyDefinitionId AND ep.EntityName = 'syStudent'
+            WHERE s.Active = 1
+                AND ep.IsActive = 1
+                AND (@ProgramFilter IS NULL OR CAST(s.AdProgramID AS NVARCHAR(50)) = @ProgramFilter)
+                AND (@StatusFilter IS NULL OR 'Active' = @StatusFilter)
             ORDER BY s.SyStudentId";
 
         var studentDict = new Dictionary<long, StudentProjection>();
@@ -84,17 +85,18 @@ public class AnthologyExtPropRepository : IExtPropRepository
         using var connection = new SqlConnection(_connectionString);
         
         var sql = @"
-            SELECT 
+            SELECT
                 d.CmDocumentId as Id,
-                d.DocumentTypeCode,
+                CAST(d.CmDocTypeID AS NVARCHAR(50)) as DocumentTypeCode,
                 -- Extended Properties
-                ep.PropertyCode,
-                epv.Value as ExtValue
+                ep.Name as PropertyCode,
+                COALESCE(epv.StringValue, CAST(epv.DecimalValue AS NVARCHAR(512)), CAST(epv.DateTimeValue AS NVARCHAR(512)), CAST(epv.BooleanValue AS NVARCHAR(512)), epv.MultiValue) as ExtValue
             FROM dbo.CmDocument d WITH (NOLOCK)
-            LEFT JOIN dbo.SyExtendedPropertyValue epv WITH (NOLOCK) ON epv.EntityTable = 'CmDocument' AND epv.EntityId = d.CmDocumentId
-            LEFT JOIN dbo.SyExtendedProperty ep WITH (NOLOCK) ON ep.SyExtendedPropertyId = epv.SyExtendedPropertyId
-            WHERE d.IsActive = 1
-                AND (@DocTypeFilter IS NULL OR d.DocumentTypeCode = @DocTypeFilter)
+            LEFT JOIN dbo.SyExtendedPropertyValue epv WITH (NOLOCK) ON epv.EntityId = d.CmDocumentId
+            LEFT JOIN dbo.SyExtendedPropertyDefinition ep WITH (NOLOCK) ON ep.SyExtendedPropertyDefinitionId = epv.SyExtendedPropertyDefinitionId AND ep.EntityName = 'CmDocument'
+            WHERE 1=1 -- No IsActive column in CmDocument, so always true
+                AND ep.IsActive = 1
+                AND (@DocTypeFilter IS NULL OR CAST(d.CmDocTypeID AS NVARCHAR(50)) = @DocTypeFilter)
             ORDER BY d.CmDocumentId";
 
         var docDict = new Dictionary<long, DocumentProjection>();
@@ -132,32 +134,32 @@ public class AnthologyExtPropRepository : IExtPropRepository
     {
         using var connection = new SqlConnection(_connectionString);
         
-        // Use the property code version for flexibility
+        // Use the property name version for flexibility
         var sql = @"
-            DECLARE @Now DATETIMEOFFSET = SYSDATETIMEOFFSET();
-            
+            DECLARE @Now DATETIME = GETDATE();
+
             ;WITH Def AS (
-                SELECT sp.SyExtendedPropertyId
-                FROM dbo.SyExtendedProperty sp
-                WHERE sp.EntityTable = @EntityTable AND sp.PropertyCode = @PropertyCode
+                SELECT sp.SyExtendedPropertyDefinitionId
+                FROM dbo.SyExtendedPropertyDefinition sp
+                WHERE sp.EntityName = @EntityName AND sp.Name = @PropertyName
             )
             MERGE dbo.SyExtendedPropertyValue AS T
-            USING (SELECT @EntityId AS EntityId, d.SyExtendedPropertyId AS PropertyId FROM Def d) AS S
-            ON (T.EntityTable = @EntityTable AND T.EntityId = S.EntityId AND T.SyExtendedPropertyId = S.PropertyId)
-            WHEN MATCHED AND ISNULL(T.[Value], N'') <> ISNULL(@NewValue, N'')
+            USING (SELECT @EntityId AS EntityId, d.SyExtendedPropertyDefinitionId AS PropertyId FROM Def d) AS S
+            ON (T.EntityId = S.EntityId AND T.SyExtendedPropertyDefinitionId = S.PropertyId)
+            WHEN MATCHED AND ISNULL(T.StringValue, N'') <> ISNULL(@NewValue, N'')
               THEN UPDATE SET
-                   T.[Value] = @NewValue,
-                   T.RecLastModifiedDate = @Now,
-                   T.UpdatedByStaffId = @StaffId
+                   T.StringValue = @NewValue,
+                   T.DateLstMod = @Now,
+                   T.UserId = @StaffId
             WHEN NOT MATCHED BY TARGET
-              THEN INSERT (EntityTable, EntityId, SyExtendedPropertyId, [Value], RecCreateDate, CreatedByStaffId)
-                   VALUES (@EntityTable, @EntityId, S.PropertyId, @NewValue, @Now, @StaffId);";
+              THEN INSERT (EntityName, EntityId, SyExtendedPropertyDefinitionId, StringValue, DateAdded, UserId)
+                   VALUES (@EntityName, @EntityId, S.PropertyId, @NewValue, @Now, @StaffId);";
 
         await connection.ExecuteAsync(sql, new
         {
-            EntityTable = entityType,
+            EntityName = entityType,
             EntityId = entityId,
-            PropertyCode = propertyCode,
+            PropertyName = propertyCode,
             NewValue = newValue,
             StaffId = staffId
         });
@@ -173,9 +175,9 @@ public class AnthologyExtPropRepository : IExtPropRepository
         using var connection = new SqlConnection(_connectionString);
         
         var sql = @"
-            SELECT SyExtendedPropertyId 
-            FROM dbo.SyExtendedProperty WITH (NOLOCK)
-            WHERE EntityTable = @EntityType AND PropertyCode = @PropertyCode AND IsActive = 1";
+            SELECT SyExtendedPropertyDefinitionId
+            FROM dbo.SyExtendedPropertyDefinition WITH (NOLOCK)
+            WHERE EntityName = @EntityType AND Name = @PropertyCode AND IsActive = 1";
 
         var propertyId = await connection.QuerySingleOrDefaultAsync<int?>(sql, new
         {
@@ -196,17 +198,17 @@ public class AnthologyExtPropRepository : IExtPropRepository
         using var connection = new SqlConnection(_connectionString);
         
         var sql = @"
-            SELECT 
-                SyExtendedPropertyId as PropertyId,
-                PropertyCode,
-                EntityTable,
-                DisplayName,
-                DataType,
-                IsRequired,
+            SELECT
+                SyExtendedPropertyDefinitionId as PropertyId,
+                Name as PropertyCode,
+                EntityName as EntityTable,
+                Name as DisplayName,
+                PropertyType as DataType,
+                CAST(0 AS BIT) as IsRequired, -- Default since no IsRequired column
                 IsActive
-            FROM dbo.SyExtendedProperty WITH (NOLOCK)
-            WHERE EntityTable = @EntityType
-            ORDER BY PropertyCode";
+            FROM dbo.SyExtendedPropertyDefinition WITH (NOLOCK)
+            WHERE EntityName = @EntityType
+            ORDER BY Name";
 
         var results = await connection.QueryAsync<ExtPropertyDefinition>(sql, new { EntityType = entityType });
         return results.ToList();
