@@ -200,6 +200,36 @@ rules:
           severity: "warning"
           actions: ["audit:annotate"]
 
+  # --- Expiration window violation (Spring 2024) ---
+  - id: "doc.expiry.spring2024.window"
+    name: "Flag documents with ExpirationDate between 2024-03-01 and 2024-05-01 (inclusive)"
+    scope:
+      entity: "Document"
+    when:
+      between:
+        path: "ExpirationDate"
+        start: "2024-03-01"
+        end: "2024-05-01"
+        inclusive: true
+    requirements:
+      - property: "ExpirationDate"
+        type: "date"
+        required: true
+        constraints:
+          # Force a violation whenever ExpirationDate is in the window above
+          notBetween:
+            start: "2024-03-01"
+            end: "2024-05-01"
+            inclusive: true
+        normalize:
+          dateFormat: "yyyy-MM-dd"
+    onGroupFailure:
+      severity: "error"
+      actions:
+        - "audit:annotate"
+        - "notify:email"
+        - "create-task:Review Expiring Document Window"
+
   # ========== FINANCIAL AID RULES ==========
   
   - id: "student.finaid.dependency.status"

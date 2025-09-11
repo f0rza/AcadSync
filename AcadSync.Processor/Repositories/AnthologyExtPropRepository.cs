@@ -93,7 +93,7 @@ public class AnthologyExtPropRepository : IExtPropRepository
                 COALESCE(epv.StringValue, CAST(epv.DecimalValue AS NVARCHAR(512)), CAST(epv.DateTimeValue AS NVARCHAR(512)), CAST(epv.BooleanValue AS NVARCHAR(512)), epv.MultiValue) as ExtValue
             FROM dbo.CmDocument d WITH (NOLOCK)
             LEFT JOIN dbo.SyExtendedPropertyValue epv WITH (NOLOCK) ON epv.EntityId = d.CmDocumentId
-            LEFT JOIN dbo.SyExtendedPropertyDefinition ep WITH (NOLOCK) ON ep.SyExtendedPropertyDefinitionId = epv.SyExtendedPropertyDefinitionId AND ep.EntityName = 'CmDocument'
+            LEFT JOIN dbo.SyExtendedPropertyDefinition ep WITH (NOLOCK) ON ep.SyExtendedPropertyDefinitionId = epv.SyExtendedPropertyDefinitionId AND ep.EntityName = 'Document'
             WHERE 1=1 -- No IsActive column in CmDocument, so always true
                 AND ep.IsActive = 1
                 AND (@DocTypeFilter IS NULL OR CAST(d.CmDocTypeID AS NVARCHAR(50)) = @DocTypeFilter)
