@@ -133,8 +133,10 @@ public class AnthologyExtPropRepository : IExtPropRepository
     public async Task UpsertExtPropertyAsync(string entityType, long entityId, string propertyCode, string? newValue, int staffId)
     {
         using var connection = new SqlConnection(_connectionString);
-        
-        // Use the property name version for flexibility
+
+        // Parse value type and prepare typed parameters
+        var (isDate, dateValue, isDecimal, decimalValue, isBool, boolValue, isString, stringValue) = ParseValueType(newValue);
+
         var sql = @"
             DECLARE @Now DATETIME = GETDATE();
 
@@ -146,23 +148,76 @@ public class AnthologyExtPropRepository : IExtPropRepository
             MERGE dbo.SyExtendedPropertyValue AS T
             USING (SELECT @EntityId AS EntityId, d.SyExtendedPropertyDefinitionId AS PropertyId FROM Def d) AS S
             ON (T.EntityId = S.EntityId AND T.SyExtendedPropertyDefinitionId = S.PropertyId)
-            WHEN MATCHED AND ISNULL(T.StringValue, N'') <> ISNULL(@NewValue, N'')
+            WHEN MATCHED AND (
+                (@IsDate = 1 AND CONVERT(date, ISNULL(T.DateTimeValue, '1900-01-01')) <> @DateValue)
+                OR (@IsDecimal = 1 AND ISNULL(T.DecimalValue, -999999) <> @DecimalValue)
+                OR (@IsBool = 1 AND ISNULL(T.BooleanValue, -1) <> @BoolValue)
+                OR (@IsString = 1 AND ISNULL(T.StringValue, N'') <> ISNULL(@StringValue, N''))
+            )
               THEN UPDATE SET
-                   T.StringValue = @NewValue,
+                   T.StringValue = CASE WHEN @IsString = 1 THEN @StringValue ELSE NULL END,
+                   T.DateTimeValue = CASE WHEN @IsDate = 1 THEN @DateValue ELSE NULL END,
+                   T.DecimalValue = CASE WHEN @IsDecimal = 1 THEN @DecimalValue ELSE NULL END,
+                   T.BooleanValue = CASE WHEN @IsBool = 1 THEN @BoolValue ELSE NULL END,
                    T.DateLstMod = @Now,
                    T.UserId = @StaffId
             WHEN NOT MATCHED BY TARGET
-              THEN INSERT (EntityName, EntityId, SyExtendedPropertyDefinitionId, StringValue, DateAdded, UserId)
-                   VALUES (@EntityName, @EntityId, S.PropertyId, @NewValue, @Now, @StaffId);";
+              THEN INSERT (EntityName, EntityId, SyExtendedPropertyDefinitionId,
+                          StringValue, DateTimeValue, DecimalValue, BooleanValue,
+                          DateAdded, DateLstMod, UserId)
+                   VALUES (@EntityName, @EntityId, S.PropertyId,
+                          CASE WHEN @IsString = 1 THEN @StringValue ELSE NULL END,
+                          CASE WHEN @IsDate = 1 THEN @DateValue ELSE NULL END,
+                          CASE WHEN @IsDecimal = 1 THEN @DecimalValue ELSE NULL END,
+                          CASE WHEN @IsBool = 1 THEN @BoolValue ELSE NULL END,
+                          @Now, @Now, @StaffId);";
 
         await connection.ExecuteAsync(sql, new
         {
             EntityName = entityType,
             EntityId = entityId,
             PropertyName = propertyCode,
-            NewValue = newValue,
+            IsDate = isDate,
+            DateValue = dateValue,
+            IsDecimal = isDecimal,
+            DecimalValue = decimalValue,
+            IsBool = isBool,
+            BoolValue = boolValue,
+            IsString = isString,
+            StringValue = stringValue,
             StaffId = staffId
         });
+    }
+
+    private static (bool isDate, DateTime? dateValue, bool isDecimal, decimal? decimalValue, bool isBool, int? boolValue, bool isString, string? stringValue) ParseValueType(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return (false, null, false, null, false, null, true, value);
+        }
+
+        var trimmed = value.Trim();
+
+        // Try parsing as date (ISO format like "2025-01-01")
+        if (DateTime.TryParse(trimmed, out var dateResult))
+        {
+            return (true, dateResult.Date, false, null, false, null, false, null);
+        }
+
+        // Try parsing as decimal
+        if (decimal.TryParse(trimmed, out var decimalResult))
+        {
+            return (false, null, true, decimalResult, false, null, false, null);
+        }
+
+        // Try parsing as boolean
+        if (bool.TryParse(trimmed, out var boolResult))
+        {
+            return (false, null, false, null, true, boolResult ? 1 : 0, false, null);
+        }
+
+        // Default to string
+        return (false, null, false, null, false, null, true, trimmed);
     }
 
     public async Task<int?> ResolvePropertyIdAsync(string entityType, string propertyCode)
