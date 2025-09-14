@@ -16,11 +16,33 @@ AcadSync now supports reverting previous repair operations with comprehensive sa
 
 **Usage:**
 ```bash
-# Revert repairs from the last hour
-dotnet run revert
+# Revert by runId (disregards date unless you also pass --from)
+dotnet run revert 12345
 
-# Available modes: demo, validate, simulate, repair, revert
+# Revert by date (everything newer than the date)
+dotnet run revert --from 2025-09-13
+
+# Dry run (no changes; preview what would be reverted)
+dotnet run revert --from 2025-09-13 --dry-run
+
+# Force (override safety check mismatches)
+dotnet run revert --from 2025-09-13 --force
+
+# Combine runId and options
+dotnet run revert 12345 --dry-run
+
+# Verify audit DB schema (tables/columns)
+dotnet run schema
 ```
+
+**CLI Reference**
+- Modes:
+  - `demo`, `validate`, `simulate`, `repair`, `revert`, `schema`
+- Revert options:
+  - `runId` (number) - when provided, reverts by run; date filter is ignored unless also provided
+  - `--from <yyyy-MM-dd | ISO>` - revert repairs newer than specified date
+  - `--dry-run` or `-d` - preview actions without making changes
+  - `--force` or `-f` - bypass safety checks when current DB values differ in formatting
 
 ### Major Processor Refactoring
 The AcadSync.Processor has been completely refactored to improve maintainability, testability, and performance:

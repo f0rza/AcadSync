@@ -260,4 +260,59 @@ public class RefactoredExtPropValidationService
             throw;
         }
     }
+
+    /// <summary>
+    /// Revert repairs by specific runId. Disregards date filters unless also provided explicitly at lower layers.
+    /// </summary>
+    public async Task<RepairResult> RevertByRunIdAsync(long runId, bool force = false, int staffId = 1, bool dryRun = false)
+    {
+        _logger.LogInformation("Starting revert operation for run #{RunId}", runId);
+
+        try
+        {
+            var result = await _revertService.RevertByFilterAsync(
+                runId: runId,
+                force: force,
+                staffId: staffId,
+                dryRun: dryRun);
+
+            _logger.LogInformation("Revert operation for run #{RunId} completed: {Successful} successful, {Failed} failed",
+                runId, result.SuccessfulRepairs, result.FailedRepairs);
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Revert operation for run #{RunId} failed", runId);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Revert repairs by date range. If 'toDate' is null, reverts up to 'now'.
+    /// </summary>
+    public async Task<RepairResult> RevertByDateRangeAsync(DateTimeOffset fromDate, DateTimeOffset? toDate = null, bool force = false, int staffId = 1, bool dryRun = false)
+    {
+        _logger.LogInformation("Starting revert operation for repairs from {From} to {To}", fromDate, toDate?.ToString() ?? "present");
+
+        try
+        {
+            var result = await _revertService.RevertByFilterAsync(
+                from: fromDate,
+                to: toDate,
+                force: force,
+                staffId: staffId,
+                dryRun: dryRun);
+
+            _logger.LogInformation("Revert operation for date range completed: {Successful} successful, {Failed} failed",
+                result.SuccessfulRepairs, result.FailedRepairs);
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Revert operation for date range failed");
+            throw;
+        }
+    }
 }

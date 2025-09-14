@@ -131,19 +131,20 @@ public class RevertService : IRevertService
         // Get current value to verify it matches what we expect
         var currentValue = await GetCurrentPropertyValueAsync(repair.EntityType, repair.EntityId, repair.PropertyCode);
 
-        // Safety check: ensure current value matches the value that was set during repair
-        if (!force && !string.Equals(currentValue, repair.ProposedValue, StringComparison.Ordinal))
-        {
-            _logger.LogWarning("Safety check failed for {EntityType}#{EntityId}.{PropertyCode}. Expected current value '{Expected}' but found '{Actual}'. Use --force to override.",
-                repair.EntityType, repair.EntityId, repair.PropertyCode, repair.ProposedValue, currentValue);
-            return false;
-        }
-
+        // In dry-run mode, skip safety check and only report what would be done
         if (dryRun)
         {
             _logger.LogInformation("[DRY RUN] Would revert {EntityType}#{EntityId}.{PropertyCode} from '{Current}' to '{Target}'",
                 repair.EntityType, repair.EntityId, repair.PropertyCode, currentValue, repair.CurrentValue);
             return true;
+        }
+
+        // Safety check: ensure current value matches the value that was set during repair
+        if (!force && !await ValuesMatchForRevertAsync(currentValue, repair.ProposedValue, repair.EntityType, repair.PropertyCode))
+        {
+            _logger.LogWarning("Safety check failed for {EntityType}#{EntityId}.{PropertyCode}. Expected current value '{Expected}' but found '{Actual}'. Use --force to override.",
+                repair.EntityType, repair.EntityId, repair.PropertyCode, repair.ProposedValue, currentValue);
+            return false;
         }
 
         try
@@ -236,6 +237,50 @@ public class RevertService : IRevertService
         // This is a simplified implementation - in a real scenario you'd need to add this method to IExtPropRepository
         // For now, we'll set it to null which should work with our UpsertExtPropertyAsync
         await _extPropRepository.UpsertExtPropertyAsync(entityType, entityId, propertyCode, null, 1);
+    }
+
+    private async Task<bool> ValuesMatchForRevertAsync(string? currentValue, string? expectedValue, string entityType, string propertyCode)
+    {
+        // Handle null/empty cases
+        if (string.IsNullOrWhiteSpace(currentValue) && string.IsNullOrWhiteSpace(expectedValue))
+            return true;
+        if (string.IsNullOrWhiteSpace(currentValue) || string.IsNullOrWhiteSpace(expectedValue))
+            return false;
+
+        // Check if this is a datetime property
+        bool isDateType = false;
+        try
+        {
+            var defs = await _extPropRepository.GetPropertyDefinitionsAsync(entityType);
+            var def = defs.FirstOrDefault(d => string.Equals(d.PropertyCode, propertyCode, StringComparison.OrdinalIgnoreCase));
+            if (def != null)
+            {
+                // DataType maps to PropertyType column in definition query
+                isDateType = string.Equals(def.DataType, "datetime", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        catch
+        {
+            // If lookup fails, default to string comparison
+            isDateType = false;
+        }
+
+        if (isDateType)
+        {
+            // For datetime properties, parse both values and compare as dates
+            if (DateTime.TryParse(currentValue.Trim(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var currentDt) &&
+                DateTime.TryParse(expectedValue.Trim(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var expectedDt))
+            {
+                // Compare dates chronologically (normalize to same precision)
+                var currentNormalized = new DateTime(currentDt.Year, currentDt.Month, currentDt.Day, currentDt.Hour, currentDt.Minute, currentDt.Second, DateTimeKind.Unspecified);
+                var expectedNormalized = new DateTime(expectedDt.Year, expectedDt.Month, expectedDt.Day, expectedDt.Hour, expectedDt.Minute, expectedDt.Second, DateTimeKind.Unspecified);
+
+                return currentNormalized == expectedNormalized;
+            }
+        }
+
+        // For non-datetime properties, use exact string comparison
+        return string.Equals(currentValue, expectedValue, StringComparison.Ordinal);
     }
 
     private async Task<string?> FormatDateForAuditIfNeededAsync(string entityType, string propertyCode, string? input)

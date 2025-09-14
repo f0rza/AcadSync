@@ -11,6 +11,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System.Globalization;
+using Microsoft.Data.SqlClient;
 
 namespace AcadSync.App;
 
@@ -24,8 +26,8 @@ class Program
 
         // Build configuration
         var configuration = new ConfigurationBuilder()
-            .SetBasePath(Directory.GetCurrentDirectory())
-            .AddJsonFile("appsettings.json", optional: true)
+            .SetBasePath(AppContext.BaseDirectory)
+            .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
             .AddEnvironmentVariables()
             .AddCommandLine(args)
             .Build();
@@ -71,7 +73,7 @@ class Program
             var validationService = scope.ServiceProvider.GetRequiredService<RefactoredExtPropValidationService>();
 
             // Parse command line arguments
-            var mode = args.Length > 0 ? args[0].ToLowerInvariant() : "simulate"; // todo: revert - "demo";
+            var mode = args.Length > 0 ? args[0].ToLowerInvariant() : "revert"; // todo: revert - "demo";
 
             switch (mode)
             {
@@ -88,7 +90,73 @@ class Program
                     await RunRepairAsync(validationService);
                     break;
                 case "revert":
-                    await RunRevertAsync(validationService);
+                    // Supported syntaxes:
+                    // dotnet run revert [runId] [--from yyyy-MM-dd|ISO] [--force|-f] [--dry-run|-d]
+                    long? runId = null;
+                    DateTimeOffset? fromDate = null;
+                    bool force = false;
+                    bool dryRun = false;
+
+                    // Parse args starting from index 1
+                    for (int i = 1; i < args.Length; i++)
+                    {
+                        var arg = args[i];
+
+                        if (long.TryParse(arg, out var parsedRunId))
+                        {
+                            runId = parsedRunId;
+                            continue;
+                        }
+
+                        var lower = arg.ToLowerInvariant();
+                        if (lower == "--force" || lower == "-f")
+                        {
+                            force = true;
+                            continue;
+                        }
+                        if (lower == "--dry-run" || lower == "-d")
+                        {
+                            dryRun = true;
+                            continue;
+                        }
+
+                        // --from=VALUE or --from VALUE or standalone date literal
+                        if (lower.StartsWith("--from="))
+                        {
+                            var value = arg.Substring("--from=".Length);
+                            if (DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var dto))
+                                fromDate = dto;
+                            else if (DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var dt))
+                                fromDate = new DateTimeOffset(dt, TimeSpan.Zero);
+                            continue;
+                        }
+                        if (lower == "--from" && i + 1 < args.Length)
+                        {
+                            var value = args[++i];
+                            if (DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var dto))
+                                fromDate = dto;
+                            else if (DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var dt))
+                                fromDate = new DateTimeOffset(dt, TimeSpan.Zero);
+                            continue;
+                        }
+
+                        // As a convenience: try to parse any standalone ISO-like date
+                        if (DateTimeOffset.TryParse(arg, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var dto2))
+                        {
+                            fromDate = dto2;
+                            continue;
+                        }
+                        if (DateTime.TryParse(arg, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var dt2))
+                        {
+                            fromDate = new DateTimeOffset(dt2, TimeSpan.Zero);
+                            continue;
+                        }
+                    }
+
+                    await RunRevertAsync(validationService, runId, fromDate, force, dryRun);
+                    break;
+                case "schema":
+                    await RunSchemaCheckAsync(configuration);
                     break;
                 default:
                     ShowUsage();
@@ -269,29 +337,51 @@ class Program
         }
     }
 
-    static async Task RunRevertAsync(RefactoredExtPropValidationService service)
+    static async Task RunRevertAsync(RefactoredExtPropValidationService service, long? runId, DateTimeOffset? fromDate, bool force, bool dryRun)
     {
         Console.WriteLine("🔄 Running Revert Mode");
         Console.WriteLine("=====================");
         Console.WriteLine();
 
-        Console.WriteLine("⚠️  WARNING: This will revert previous repair operations!");
-        Console.Write("Are you sure you want to continue? (y/N): ");
+        if (runId.HasValue)
+            Console.WriteLine($"🎯 Target: RunId #{runId.Value}");
+        if (fromDate.HasValue)
+            Console.WriteLine($"🗓️  From: {fromDate.Value:yyyy-MM-dd HH:mm:ss zzz}");
+        Console.WriteLine($"🔧 Force: {(force ? "ENABLED" : "disabled")}, DryRun: {(dryRun ? "ENABLED" : "disabled")}");
+        Console.WriteLine();
 
-        var response = Console.ReadLine()?.ToLowerInvariant();
-        if (response != "y" && response != "yes")
+        if (!dryRun)
         {
-            Console.WriteLine("❌ Revert cancelled by user");
-            return;
+            Console.WriteLine("⚠️  WARNING: This will revert previous repair operations!");
+            Console.Write("Are you sure you want to continue? (y/N): ");
+            var response = Console.ReadLine()?.ToLowerInvariant();
+            if (response != "y" && response != "yes")
+            {
+                Console.WriteLine("❌ Revert cancelled by user");
+                return;
+            }
         }
 
         try
         {
-            // For now, revert all repairs from the last hour as a demo
-            // In production, you'd parse command line args for filters
-            var fromDate = DateTimeOffset.UtcNow.AddHours(-1);
+            var staffId = 1; // Default; can be wired from config if needed
 
-            var results = await service.RevertRepairsAsync(fromDate);
+            AcadSync.Processor.Models.Results.RepairResult results;
+            if (runId.HasValue)
+            {
+                // If runId is specified, prefer it and disregard date unless explicitly intended downstream
+                results = await service.RevertByRunIdAsync(runId.Value, force, staffId, dryRun);
+            }
+            else if (fromDate.HasValue)
+            {
+                results = await service.RevertByDateRangeAsync(fromDate.Value, null, force, staffId, dryRun);
+            }
+            else
+            {
+                // Fallback: last hour
+                var fallback = DateTimeOffset.UtcNow.AddHours(-1);
+                results = await service.RevertRepairsAsync(fallback, force, staffId, dryRun);
+            }
 
             Console.WriteLine($"🔄 Revert Complete:");
             Console.WriteLine($"   • {results.SuccessfulRepairs} repairs reverted successfully");
@@ -301,6 +391,78 @@ class Program
         catch (Exception ex)
         {
             Console.WriteLine($"❌ Revert failed: {ex.Message}");
+        }
+    }
+
+    static async Task RunSchemaCheckAsync(IConfiguration configuration)
+    {
+        Console.WriteLine("🔎 Checking AcadSyncAudit schema for ExtPropAudit / ValidationRuns / SystemLog...");
+        var cs = configuration.GetConnectionString("AcadSyncAudit");
+        if (string.IsNullOrWhiteSpace(cs))
+        {
+            Console.WriteLine("❌ AcadSyncAudit connection string is missing.");
+            return;
+        }
+
+        try
+        {
+            using var conn = new SqlConnection(cs);
+            await conn.OpenAsync();
+
+            // Check tables exist
+            var tables = new Dictionary<string, string>
+            {
+                { "acadsync.ExtPropAudit", @"
+SELECT 1 
+FROM INFORMATION_SCHEMA.TABLES 
+WHERE TABLE_SCHEMA = 'acadsync' AND TABLE_NAME = 'ExtPropAudit';" },
+                { "acadsync.ValidationRuns", @"
+SELECT 1 
+FROM INFORMATION_SCHEMA.TABLES 
+WHERE TABLE_SCHEMA = 'acadsync' AND TABLE_NAME = 'ValidationRuns';" },
+                { "acadsync.SystemLog", @"
+SELECT 1 
+FROM INFORMATION_SCHEMA.TABLES 
+WHERE TABLE_SCHEMA = 'acadsync' AND TABLE_NAME = 'SystemLog';" }
+            };
+
+            foreach (var kv in tables)
+            {
+                using var cmd = new SqlCommand(kv.Value, conn);
+                var exists = await cmd.ExecuteScalarAsync();
+                Console.WriteLine(exists != null ? $"✅ Table exists: {kv.Key}" : $"❌ Table missing: {kv.Key}");
+            }
+
+            // Check ExtPropAudit required columns
+            var requiredColumns = new[]
+            {
+                "AuditId","Timestamp","RuleId","EntityType","EntityId","PropertyCode",
+                "OldValue","NewValue","Action","Severity","Operator","RunId","Notes"
+            };
+
+            var colSql = @"
+SELECT COLUMN_NAME 
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_SCHEMA='acadsync' AND TABLE_NAME='ExtPropAudit';";
+
+            using var colCmd = new SqlCommand(colSql, conn);
+            using var reader = await colCmd.ExecuteReaderAsync();
+            var cols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            while (await reader.ReadAsync())
+            {
+                cols.Add(reader.GetString(0));
+            }
+
+            Console.WriteLine();
+            Console.WriteLine("ExtPropAudit column check:");
+            foreach (var col in requiredColumns)
+            {
+                Console.WriteLine(cols.Contains(col) ? $"  ✅ {col}" : $"  ❌ {col} (missing)");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Schema check failed: {ex.Message}");
         }
     }
 
@@ -314,6 +476,15 @@ class Program
         Console.WriteLine("  simulate  - Show what repairs would be made");
         Console.WriteLine("  repair    - Apply repairs to database");
         Console.WriteLine("  revert    - Revert previous repair operations");
+        Console.WriteLine();
+        Console.WriteLine("Revert options:");
+        Console.WriteLine("  revert [runId] [--from yyyy-MM-dd|ISO] [--force|-f] [--dry-run|-d]");
+        Console.WriteLine("  Examples:");
+        Console.WriteLine("    dotnet run revert 1                # revert by runId");
+        Console.WriteLine("    dotnet run revert --from 2025-09-13 --dry-run");
+        Console.WriteLine();
+        Console.WriteLine("Tools:");
+        Console.WriteLine("  schema    - Verify audit DB schema (tables/columns)");
         Console.WriteLine();
         Console.WriteLine("Configuration:");
         Console.WriteLine("  Set connection string in appsettings.json:");
