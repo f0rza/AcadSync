@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Logging;
+using System.Globalization;
+using System.Linq;
 using AcadSync.Processor.Interfaces;
 using AcadSync.Processor.Models.Results;
 using AcadSync.Audit.Interfaces;
@@ -167,14 +169,17 @@ public class RevertService : IRevertService
                     repair.EntityType, repair.EntityId, repair.PropertyCode, repair.CurrentValue);
             }
 
-            // Log the revert operation
+            // Log the revert operation (ensure datetime formatting when applicable)
+            var formattedCurrent = await FormatDateForAuditIfNeededAsync(repair.EntityType, repair.PropertyCode, currentValue);
+            var formattedOld = await FormatDateForAuditIfNeededAsync(repair.EntityType, repair.PropertyCode, repair.CurrentValue);
+
             var revertAudit = new AuditEntry(
                 repair.RuleId,
                 repair.EntityType,
                 repair.EntityId,
                 repair.PropertyCode,
-                currentValue, // Current value before revert
-                repair.CurrentValue, // Value we're setting (the old value)
+                formattedCurrent, // Current value before revert (formatted if datetime)
+                formattedOld,     // Target value (formatted if datetime)
                 "revert:restore",
                 "info"
             );
@@ -231,5 +236,42 @@ public class RevertService : IRevertService
         // This is a simplified implementation - in a real scenario you'd need to add this method to IExtPropRepository
         // For now, we'll set it to null which should work with our UpsertExtPropertyAsync
         await _extPropRepository.UpsertExtPropertyAsync(entityType, entityId, propertyCode, null, 1);
+    }
+
+    private async Task<string?> FormatDateForAuditIfNeededAsync(string entityType, string propertyCode, string? input)
+    {
+        // If input is null/blank, return null
+        if (string.IsNullOrWhiteSpace(input))
+            return null;
+
+        bool isDateType = false;
+        try
+        {
+            var defs = await _extPropRepository.GetPropertyDefinitionsAsync(entityType);
+            var def = defs.FirstOrDefault(d => string.Equals(d.PropertyCode, propertyCode, StringComparison.OrdinalIgnoreCase));
+            if (def != null)
+            {
+                // DataType maps to PropertyType column in definition query
+                isDateType = string.Equals(def.DataType, "datetime", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        catch
+        {
+            // If lookup fails, default to not formatting
+            isDateType = false;
+        }
+
+        if (!isDateType)
+            return input;
+
+        // Try to parse and normalize to midnight, then format as yyyy/MM/dd HH:mm:ss
+        if (DateTime.TryParse(input.Trim(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
+        {
+            var normalized = new DateTime(dt.Year, dt.Month, dt.Day, 0, 0, 0, 0, DateTimeKind.Unspecified);
+            return normalized.ToString("yyyy/MM/dd HH:mm:ss", CultureInfo.InvariantCulture);
+        }
+
+        // If parse fails, return original string (avoid losing data)
+        return input;
     }
 }

@@ -1,6 +1,7 @@
 using Dapper;
 using Microsoft.Data.SqlClient;
 using System.Collections.Concurrent;
+using System.Globalization;
 
 namespace AcadSync.Processor;
 
@@ -134,8 +135,70 @@ public class AnthologyExtPropRepository : IExtPropRepository
     {
         using var connection = new SqlConnection(_connectionString);
 
-        // Parse value type and prepare typed parameters
-        var (isDate, dateValue, isDecimal, decimalValue, isBool, boolValue, isString, stringValue) = ParseValueType(newValue);
+        // Determine the property type from SyExtendedPropertyDefinition
+        var propMeta = await connection.QuerySingleOrDefaultAsync<(int? PropertyId, string PropertyType)>(@"
+            SELECT TOP 1 
+                SyExtendedPropertyDefinitionId as PropertyId, 
+                PropertyType
+            FROM dbo.SyExtendedPropertyDefinition WITH (NOLOCK)
+            WHERE EntityName = @EntityName AND Name = @PropertyName AND IsActive = 1",
+            new { EntityName = entityType, PropertyName = propertyCode });
+
+        var isDateType = string.Equals(propMeta.PropertyType, "datetime", StringComparison.OrdinalIgnoreCase);
+
+        // Prepare parameters for MERGE
+        DateTime? dateValue = null;
+        string? formattedStringValue = null;
+
+        bool isDecimal = false;
+        decimal? decimalValue = null;
+        bool isBool = false;
+        int? boolValue = null;
+        bool isString = false;
+        string? stringValue = null;
+
+        if (isDateType)
+        {
+            if (!string.IsNullOrWhiteSpace(newValue))
+            {
+                var trimmedLocal = newValue.Trim();
+                if (DateTime.TryParse(trimmedLocal, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+                {
+                    // Normalize to midnight per requirement
+                    dateValue = new DateTime(parsed.Year, parsed.Month, parsed.Day, 0, 0, 0, 0, DateTimeKind.Unspecified);
+                    formattedStringValue = dateValue.Value.ToString("yyyy/MM/dd HH:mm:ss", CultureInfo.InvariantCulture);
+                }
+                else
+                {
+                    // If parsing fails for a datetime property, treat as NULL for both
+                    dateValue = null;
+                    formattedStringValue = null;
+                }
+            }
+            // else leave both null (clears values)
+        }
+        else
+        {
+            // For non-datetime properties: treat as decimal/bool if they parse,
+            // otherwise store as string as-is (even if it looks like a date).
+            var trimmed = newValue?.Trim();
+
+            if (!string.IsNullOrWhiteSpace(trimmed) && decimal.TryParse(trimmed, out var dec))
+            {
+                isDecimal = true;
+                decimalValue = dec;
+            }
+            else if (!string.IsNullOrWhiteSpace(trimmed) && bool.TryParse(trimmed, out var b))
+            {
+                isBool = true;
+                boolValue = b ? 1 : 0;
+            }
+            else
+            {
+                isString = true;
+                stringValue = trimmed;
+            }
+        }
 
         var sql = @"
             DECLARE @Now DATETIME = GETDATE();
@@ -149,13 +212,15 @@ public class AnthologyExtPropRepository : IExtPropRepository
             USING (SELECT @EntityId AS EntityId, d.SyExtendedPropertyDefinitionId AS PropertyId FROM Def d) AS S
             ON (T.EntityId = S.EntityId AND T.SyExtendedPropertyDefinitionId = S.PropertyId)
             WHEN MATCHED AND (
-                (@IsDate = 1 AND CONVERT(date, ISNULL(T.DateTimeValue, '1900-01-01')) <> @DateValue)
+                (@IsDate = 1 AND (CONVERT(date, ISNULL(T.DateTimeValue, '1900-01-01')) <> @DateValue OR ISNULL(T.StringValue, N'') <> ISNULL(@FormattedStringValue, N'')))
                 OR (@IsDecimal = 1 AND ISNULL(T.DecimalValue, -999999) <> @DecimalValue)
                 OR (@IsBool = 1 AND ISNULL(T.BooleanValue, -1) <> @BoolValue)
                 OR (@IsString = 1 AND ISNULL(T.StringValue, N'') <> ISNULL(@StringValue, N''))
             )
               THEN UPDATE SET
-                   T.StringValue = CASE WHEN @IsString = 1 THEN @StringValue ELSE NULL END,
+                   T.StringValue = CASE WHEN @IsDate = 1 THEN @FormattedStringValue
+                                       WHEN @IsString = 1 THEN @StringValue
+                                       ELSE NULL END,
                    T.DateTimeValue = CASE WHEN @IsDate = 1 THEN @DateValue ELSE NULL END,
                    T.DecimalValue = CASE WHEN @IsDecimal = 1 THEN @DecimalValue ELSE NULL END,
                    T.BooleanValue = CASE WHEN @IsBool = 1 THEN @BoolValue ELSE NULL END,
@@ -166,7 +231,9 @@ public class AnthologyExtPropRepository : IExtPropRepository
                           StringValue, DateTimeValue, DecimalValue, BooleanValue,
                           DateAdded, DateLstMod, UserId)
                    VALUES (@EntityName, @EntityId, S.PropertyId,
-                          CASE WHEN @IsString = 1 THEN @StringValue ELSE NULL END,
+                          CASE WHEN @IsDate = 1 THEN @FormattedStringValue
+                              WHEN @IsString = 1 THEN @StringValue
+                              ELSE NULL END,
                           CASE WHEN @IsDate = 1 THEN @DateValue ELSE NULL END,
                           CASE WHEN @IsDecimal = 1 THEN @DecimalValue ELSE NULL END,
                           CASE WHEN @IsBool = 1 THEN @BoolValue ELSE NULL END,
@@ -177,14 +244,15 @@ public class AnthologyExtPropRepository : IExtPropRepository
             EntityName = entityType,
             EntityId = entityId,
             PropertyName = propertyCode,
-            IsDate = isDate,
+            IsDate = isDateType ? 1 : 0,
             DateValue = dateValue,
-            IsDecimal = isDecimal,
+            IsDecimal = isDecimal ? 1 : 0,
             DecimalValue = decimalValue,
-            IsBool = isBool,
+            IsBool = isBool ? 1 : 0,
             BoolValue = boolValue,
-            IsString = isString,
+            IsString = isString ? 1 : 0,
             StringValue = stringValue,
+            FormattedStringValue = formattedStringValue,
             StaffId = staffId
         });
     }

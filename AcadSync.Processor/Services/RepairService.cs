@@ -1,10 +1,13 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Globalization;
+using System.Linq;
 using AcadSync.Processor.Configuration;
 using AcadSync.Processor.Interfaces;
 using AcadSync.Processor.Models.Results;
 using AcadSync.Audit.Interfaces;
 using AcadSync.Audit.Extensions;
+using AcadSync.Audit.Models;
 
 namespace AcadSync.Processor.Services;
 
@@ -142,10 +145,11 @@ public class RepairService : IRepairService
                 staffId
             );
 
-            // Write audit record for successful repair
+            // Write audit record for successful repair (ensure datetime formatting when applicable)
+            var successAudit = await BuildAuditEntryAsync(violation);
             await _auditRepository.WriteAuditAsync(
-                violation.ToAuditEntry(), 
-                staffId, 
+                successAudit,
+                staffId,
                 $"Auto-repaired by AcadSync: {violation.RuleId}"
             );
 
@@ -159,9 +163,10 @@ public class RepairService : IRepairService
             // Write audit record for failed repair
             try
             {
+                var failAudit = await BuildAuditEntryAsync(violation);
                 await _auditRepository.WriteAuditAsync(
-                    violation.ToAuditEntry(), 
-                    staffId, 
+                    failAudit,
+                    staffId,
                     $"Repair failed: {ex.Message}"
                 );
             }
@@ -278,5 +283,61 @@ public class RepairService : IRepairService
 
             return result;
         }
+    }
+
+    private async Task<AuditEntry> BuildAuditEntryAsync(Violation violation)
+    {
+        // Determine if the property is datetime by looking up the definition
+        bool isDateType = false;
+        try
+        {
+            var defs = await _repository.GetPropertyDefinitionsAsync(violation.EntityType);
+            var def = defs.FirstOrDefault(d => string.Equals(d.PropertyCode, violation.PropertyCode, StringComparison.OrdinalIgnoreCase));
+            if (def != null)
+            {
+                // DataType maps to PropertyType column
+                isDateType = string.Equals(def.DataType, "datetime", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        catch
+        {
+            // If lookup fails, default to not formatting
+            isDateType = false;
+        }
+
+        string? oldVal = violation.CurrentValue;
+        string? newVal = violation.ProposedValue;
+
+        if (isDateType)
+        {
+            oldVal = FormatDateIfParsable(oldVal);
+            newVal = FormatDateIfParsable(newVal);
+        }
+
+        return new AuditEntry(
+            violation.RuleId,
+            violation.EntityType,
+            violation.EntityId,
+            violation.PropertyCode,
+            oldVal,
+            newVal,
+            violation.Action,
+            violation.Severity.ToString()
+        );
+    }
+
+    private static string? FormatDateIfParsable(string? input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+            return null;
+
+        // Accept both ISO date and datetime strings
+        if (DateTime.TryParse(input.Trim(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
+        {
+            // Normalize to midnight as per requirement examples
+            var normalized = new DateTime(dt.Year, dt.Month, dt.Day, 0, 0, 0, 0, DateTimeKind.Unspecified);
+            return normalized.ToString("yyyy/MM/dd HH:mm:ss", CultureInfo.InvariantCulture);
+        }
+        return input;
     }
 }
