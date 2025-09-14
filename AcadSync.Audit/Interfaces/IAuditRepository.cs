@@ -10,7 +10,7 @@ public interface IAuditRepository
     /// <summary>
     /// Write audit record for a violation/repair
     /// </summary>
-    Task WriteAuditAsync(AuditEntry auditEntry, int staffId, string? notes = null);
+    Task WriteAuditAsync(AuditEntry auditEntry, int staffId, string? notes = null, long? runId = null);
 
     /// <summary>
     /// Start a new validation run and return the run ID
@@ -41,4 +41,9 @@ public interface IAuditRepository
     /// Clean up old audit records based on retention policy
     /// </summary>
     Task CleanupOldAuditRecordsAsync(int retentionDays);
+
+    /// <summary>
+    /// Get repair events for revert operations
+    /// </summary>
+    Task<IEnumerable<AuditEntry>> GetRepairEventsAsync(DateTimeOffset? from, DateTimeOffset? to, string? ruleId, string? entityType, long? entityId, long? runId);
 }

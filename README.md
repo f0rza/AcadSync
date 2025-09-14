@@ -4,7 +4,25 @@ Keep Anthology Student Extended Properties clean and compliant: scan, validate, 
 
 ## 🚀 Recent Updates
 
-### Major Processor Refactoring (Latest)
+### 🔄 New Revert Feature (Latest)
+AcadSync now supports reverting previous repair operations with comprehensive safety guards:
+
+- **🔙 Safe Revert Operations**: Revert individual repairs or bulk operations with safety checks
+- **🛡️ Safety Guards**: Verify current values match expected values before reverting
+- **📋 Filter-Based Reverting**: Revert by time range, rule, entity, or validation run
+- **🔍 Dry-Run Mode**: Preview what would be reverted without making changes
+- **📝 Complete Audit Trail**: All revert operations are fully logged and auditable
+- **⚡ Force Override**: Bypass safety checks when needed for emergency situations
+
+**Usage:**
+```bash
+# Revert repairs from the last hour
+dotnet run revert
+
+# Available modes: demo, validate, simulate, repair, revert
+```
+
+### Major Processor Refactoring
 The AcadSync.Processor has been completely refactored to improve maintainability, testability, and performance:
 
 - **🏗️ Clean Architecture**: Modular design with clear separation of concerns

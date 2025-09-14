@@ -1,4 +1,6 @@
 ﻿using AcadSync.Processor;
+using AcadSync.Processor.Services;
+using AcadSync.Processor.Extensions;
 using AcadSync.Processor.Models.Domain;
 using AcadSync.Processor.Models.Projections;
 using AcadSync.Processor.Utilities;
@@ -33,6 +35,11 @@ class Program
             .ConfigureServices((context, services) =>
             {
                 services.AddSingleton<IConfiguration>(configuration);
+
+                // Add AcadSync Processor services using extension method
+                services.AddAcadSyncProcessor(configuration);
+
+                // Override repository registrations with custom connection strings
                 services.AddScoped<IExtPropRepository>(provider =>
                 {
                     var connectionString = configuration.GetConnectionString("AnthologyStudent")
@@ -45,8 +52,9 @@ class Program
                         ?? "Server=localhost;Database=AcadSyncAudit;Integrated Security=true;TrustServerCertificate=true;";
                     return new AuditRepository(connectionString);
                 });
+
                 services.AddScoped<IDatabaseInitializationService, DatabaseInitializationService>();
-                services.AddScoped<ExtPropValidationService>();
+                services.AddScoped<RefactoredExtPropValidationService>();
             })
             .Build();
 
@@ -60,11 +68,11 @@ class Program
             await dbInitService.InitializeAsync();
             Console.WriteLine();
             
-            var validationService = scope.ServiceProvider.GetRequiredService<ExtPropValidationService>();
-            
+            var validationService = scope.ServiceProvider.GetRequiredService<RefactoredExtPropValidationService>();
+
             // Parse command line arguments
-            var mode = args.Length > 0 ? args[0].ToLowerInvariant() : "demo";
-            
+            var mode = args.Length > 0 ? args[0].ToLowerInvariant() : "simulate"; // todo: revert - "demo";
+
             switch (mode)
             {
                 case "demo":
@@ -78,6 +86,9 @@ class Program
                     break;
                 case "repair":
                     await RunRepairAsync(validationService);
+                    break;
+                case "revert":
+                    await RunRevertAsync(validationService);
                     break;
                 default:
                     ShowUsage();
@@ -95,7 +106,7 @@ class Program
         }
     }
 
-    static async Task RunDemoAsync(ExtPropValidationService service)
+    static async Task RunDemoAsync(RefactoredExtPropValidationService service)
     {
         Console.WriteLine("🚀 Running Demo with Sample Data");
         Console.WriteLine("================================");
@@ -120,7 +131,7 @@ class Program
 
         var yamlContent = await File.ReadAllTextAsync(rulesPath);
         var doc = EprlLoader.LoadFromYaml(yamlContent);
-        
+
         Console.WriteLine($"📋 Loaded Rules: {doc.Ruleset.Name} v{doc.Ruleset.Version}");
         Console.WriteLine($"   • {doc.Rules.Count} rules defined");
         Console.WriteLine($"   • Tenant: {doc.Tenant}");
@@ -142,7 +153,7 @@ class Program
         {
             Console.WriteLine("📝 Violation Details:");
             Console.WriteLine("====================");
-            
+
             foreach (var violation in violations.Take(10)) // Show first 10
             {
                 var icon = violation.Severity switch
@@ -152,7 +163,7 @@ class Program
                     Severity.warning => "⚠️",
                     _ => "ℹ️"
                 };
-                
+
                 Console.WriteLine($"{icon} {violation.EntityType}#{violation.EntityId} - {violation.PropertyCode}");
                 Console.WriteLine($"   Rule: {violation.RuleId}");
                 Console.WriteLine($"   Issue: {violation.Reason}");
@@ -170,7 +181,7 @@ class Program
             // Summary by severity
             var summary = violations.GroupBy(v => v.Severity)
                 .ToDictionary(g => g.Key, g => g.Count());
-            
+
             Console.WriteLine("📊 Summary by Severity:");
             foreach (var (severity, count) in summary.OrderByDescending(x => x.Key))
             {
@@ -196,7 +207,7 @@ class Program
         Console.WriteLine("   • Customize rules.yaml for your institution's requirements");
     }
 
-    static async Task RunValidationAsync(ExtPropValidationService service, bool simulate)
+    static async Task RunValidationAsync(RefactoredExtPropValidationService service, bool simulate)
     {
         var mode = simulate ? "Simulation" : "Validation";
         Console.WriteLine($"🔍 Running {mode} Mode");
@@ -206,15 +217,15 @@ class Program
         try
         {
             var results = await service.ValidateAllAsync(simulate ? EprlMode.simulate : EprlMode.validate);
-            
+
             Console.WriteLine($"📊 {mode} Complete:");
             Console.WriteLine($"   • {results.Count} violations found");
-            
+
             if (results.Any())
             {
                 var summary = results.GroupBy(v => v.Severity)
                     .ToDictionary(g => g.Key, g => g.Count());
-                
+
                 foreach (var (severity, count) in summary.OrderByDescending(x => x.Key))
                 {
                     Console.WriteLine($"   • {severity}: {count}");
@@ -228,7 +239,7 @@ class Program
         }
     }
 
-    static async Task RunRepairAsync(ExtPropValidationService service)
+    static async Task RunRepairAsync(RefactoredExtPropValidationService service)
     {
         Console.WriteLine("🔧 Running Repair Mode");
         Console.WriteLine("=====================");
@@ -236,7 +247,7 @@ class Program
 
         Console.WriteLine("⚠️  WARNING: This will modify your Anthology Student database!");
         Console.Write("Are you sure you want to continue? (y/N): ");
-        
+
         var response = Console.ReadLine()?.ToLowerInvariant();
         if (response != "y" && response != "yes")
         {
@@ -247,7 +258,7 @@ class Program
         try
         {
             var results = await service.ValidateAndRepairAsync();
-            
+
             Console.WriteLine($"🔧 Repair Complete:");
             Console.WriteLine($"   • {results.Count} violations processed");
             Console.WriteLine($"   • Check ExtPropAudit table for detailed logs");
@@ -255,6 +266,41 @@ class Program
         catch (Exception ex)
         {
             Console.WriteLine($"❌ Repair failed: {ex.Message}");
+        }
+    }
+
+    static async Task RunRevertAsync(RefactoredExtPropValidationService service)
+    {
+        Console.WriteLine("🔄 Running Revert Mode");
+        Console.WriteLine("=====================");
+        Console.WriteLine();
+
+        Console.WriteLine("⚠️  WARNING: This will revert previous repair operations!");
+        Console.Write("Are you sure you want to continue? (y/N): ");
+
+        var response = Console.ReadLine()?.ToLowerInvariant();
+        if (response != "y" && response != "yes")
+        {
+            Console.WriteLine("❌ Revert cancelled by user");
+            return;
+        }
+
+        try
+        {
+            // For now, revert all repairs from the last hour as a demo
+            // In production, you'd parse command line args for filters
+            var fromDate = DateTimeOffset.UtcNow.AddHours(-1);
+
+            var results = await service.RevertRepairsAsync(fromDate);
+
+            Console.WriteLine($"🔄 Revert Complete:");
+            Console.WriteLine($"   • {results.SuccessfulRepairs} repairs reverted successfully");
+            Console.WriteLine($"   • {results.FailedRepairs} reverts failed");
+            Console.WriteLine($"   • Check ExtPropAudit table for detailed logs");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Revert failed: {ex.Message}");
         }
     }
 
@@ -267,11 +313,13 @@ class Program
         Console.WriteLine("  validate  - Validate against real database");
         Console.WriteLine("  simulate  - Show what repairs would be made");
         Console.WriteLine("  repair    - Apply repairs to database");
+        Console.WriteLine("  revert    - Revert previous repair operations");
         Console.WriteLine();
         Console.WriteLine("Configuration:");
         Console.WriteLine("  Set connection string in appsettings.json:");
         Console.WriteLine("  \"ConnectionStrings\": {");
         Console.WriteLine("    \"AnthologyStudent\": \"Server=...;Database=...;\"");
+        Console.WriteLine("    \"AcadSyncAudit\": \"Server=...;Database=...;\"");
         Console.WriteLine("  }");
     }
 

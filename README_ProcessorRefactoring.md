@@ -35,7 +35,8 @@ AcadSync.Processor/
 │   ├── IRuleLoader.cs                   # Rule loading and caching
 │   ├── IEntityService.cs                # Entity data retrieval
 │   ├── IValidationService.cs            # Main orchestration
-│   └── IRepairService.cs                # Violation repair logic
+│   ├── IRepairService.cs                # Violation repair logic
+│   └── IRevertService.cs                # Repair revert operations
 ├── Models/
 │   └── Results/                         # Result models
 │       ├── ValidationResult.cs
@@ -47,6 +48,7 @@ AcadSync.Processor/
     ├── EntityService.cs                 # Entity retrieval orchestration
     ├── ValidationOrchestrator.cs        # Main validation workflow
     ├── RepairService.cs                 # Violation repair logic
+    ├── RevertService.cs                 # Repair revert operations
     └── RefactoredExtPropValidationService.cs  # Backward-compatible facade
 ```
 
@@ -120,6 +122,30 @@ var result = await validationService.ValidateAllAsync(EprlMode.validate);
 **Usage**:
 ```csharp
 var repairResult = await repairService.RepairViolationsAsync(violations, staffId);
+```
+
+### 6. IRevertService & RevertService
+**Purpose**: Safe reversion of previous repair operations with comprehensive safety guards
+
+**Key Features**:
+- Filter-based revert operations (time range, rule, entity, run ID)
+- Safety checks to verify current values match expected values
+- Dry-run mode for previewing changes
+- Force override for emergency situations
+- Complete audit trail for all revert operations
+- Detailed success/failure tracking
+
+**Usage**:
+```csharp
+// Revert repairs from the last hour
+var result = await revertService.RevertByFilterAsync(
+    from: DateTimeOffset.UtcNow.AddHours(-1),
+    force: false,
+    staffId: 1,
+    dryRun: false);
+
+// Revert specific repairs
+var result = await revertService.RevertAsync(repairs, force: false, staffId: 1);
 ```
 
 ## Configuration

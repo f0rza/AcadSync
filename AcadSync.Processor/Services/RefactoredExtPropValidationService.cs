@@ -12,17 +12,20 @@ public class RefactoredExtPropValidationService
 {
     private readonly IValidationService _validationService;
     private readonly IRepairService _repairService;
+    private readonly IRevertService _revertService;
     private readonly IEntityService _entityService;
     private readonly ILogger<RefactoredExtPropValidationService> _logger;
 
     public RefactoredExtPropValidationService(
         IValidationService validationService,
         IRepairService repairService,
+        IRevertService revertService,
         IEntityService entityService,
         ILogger<RefactoredExtPropValidationService> logger)
     {
         _validationService = validationService ?? throw new ArgumentNullException(nameof(validationService));
         _repairService = repairService ?? throw new ArgumentNullException(nameof(repairService));
+        _revertService = revertService ?? throw new ArgumentNullException(nameof(revertService));
         _entityService = entityService ?? throw new ArgumentNullException(nameof(entityService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -219,14 +222,41 @@ public class RefactoredExtPropValidationService
         {
             var entities = await _entityService.GetAllEntitiesAsync();
             var result = await _repairService.ValidateAndRepairAsync(entities, staffId);
-            
+
             _logger.LogInformation("Detailed repair completed in {Duration}ms", result.TotalDuration.TotalMilliseconds);
-            
+
             return result;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get detailed repair result");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Revert repairs based on time range (simplified implementation)
+    /// </summary>
+    public async Task<RepairResult> RevertRepairsAsync(DateTimeOffset fromDate, bool force = false, int staffId = 1, bool dryRun = false)
+    {
+        _logger.LogInformation("Starting revert operation for repairs since {FromDate}", fromDate);
+
+        try
+        {
+            var result = await _revertService.RevertByFilterAsync(
+                from: fromDate,
+                force: force,
+                staffId: staffId,
+                dryRun: dryRun);
+
+            _logger.LogInformation("Revert operation completed: {SuccessfulRepairs} successful, {FailedRepairs} failed",
+                result.SuccessfulRepairs, result.FailedRepairs);
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Revert operation failed");
             throw;
         }
     }

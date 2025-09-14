@@ -41,6 +41,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IEntityService, EntityService>();
         services.AddScoped<IValidationService, ValidationOrchestrator>();
         services.AddScoped<IRepairService, RepairService>();
+        services.AddScoped<IRevertService, RevertService>();
 
         // Register repository (this assumes AnthologyExtPropRepository is the implementation)
         services.AddScoped<IExtPropRepository>(provider =>
@@ -76,6 +77,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IEntityService, EntityService>();
         services.AddScoped<IValidationService, ValidationOrchestrator>();
         services.AddScoped<IRepairService, RepairService>();
+        services.AddScoped<IRevertService, RevertService>();
 
         // Register custom repository
         services.AddScoped<IExtPropRepository, TRepository>();
@@ -102,6 +104,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IEntityService, EntityService>();
         services.AddScoped<IValidationService, ValidationOrchestrator>();
         services.AddScoped<IRepairService, RepairService>();
+        services.AddScoped<IRevertService, RevertService>();
 
         // Register repository
         services.AddScoped<IExtPropRepository>(provider =>
