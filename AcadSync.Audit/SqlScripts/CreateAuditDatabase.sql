@@ -42,22 +42,31 @@ BEGIN
         PropertyCode NVARCHAR(100) NOT NULL,
         OldValue NVARCHAR(4000) NULL,
         NewValue NVARCHAR(4000) NULL,
-        Action NVARCHAR(50) NOT NULL,               -- repair:upsert, repair:normalize, etc.
+        Action NVARCHAR(50) NOT NULL,               -- repair:upsert, repair:normalize, revert:restore, etc.
         Severity NVARCHAR(20) NOT NULL,             -- info, warning, error, block
         Operator NVARCHAR(200) NOT NULL,            -- staff:123 or system
+        RunId BIGINT NULL,                          -- Links to ValidationRuns for session tracking
         Notes NVARCHAR(MAX) NULL,
-        
+
         -- Indexes for common queries
         INDEX IX_ExtPropAudit_Timestamp (Timestamp DESC),
         INDEX IX_ExtPropAudit_Entity (EntityType, EntityId),
         INDEX IX_ExtPropAudit_Rule (RuleId),
-        INDEX IX_ExtPropAudit_Property (PropertyCode)
+        INDEX IX_ExtPropAudit_Property (PropertyCode),
+        INDEX IX_ExtPropAudit_Run (RunId)
     );
     PRINT 'Created ExtPropAudit table.';
 END
 ELSE
 BEGIN
     PRINT 'ExtPropAudit table already exists.';
+    -- Add RunId column if it doesn't exist (backwards compatibility)
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('acadsync.ExtPropAudit') AND name = 'RunId')
+    BEGIN
+        ALTER TABLE acadsync.ExtPropAudit ADD RunId BIGINT NULL;
+        CREATE INDEX IX_ExtPropAudit_Run ON acadsync.ExtPropAudit(RunId);
+        PRINT 'Added RunId column and index to ExtPropAudit table.';
+    END
 END
 GO
 

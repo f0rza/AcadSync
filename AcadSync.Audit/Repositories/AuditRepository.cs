@@ -17,17 +17,17 @@ public class AuditRepository : IAuditRepository
         _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
     }
 
-    public async Task WriteAuditAsync(AuditEntry auditEntry, int staffId, string? notes = null)
+    public async Task WriteAuditAsync(AuditEntry auditEntry, int staffId, string? notes = null, long? runId = null)
     {
         using var connection = new SqlConnection(_connectionString);
-        
+
         var sql = @"
             INSERT INTO acadsync.ExtPropAudit (
                 Timestamp, RuleId, EntityType, EntityId, PropertyCode,
-                OldValue, NewValue, Action, Severity, Operator, Notes
+                OldValue, NewValue, Action, Severity, Operator, RunId, Notes
             ) VALUES (
                 SYSDATETIMEOFFSET(), @RuleId, @EntityType, @EntityId, @PropertyCode,
-                @OldValue, @NewValue, @Action, @Severity, @Operator, @Notes
+                @OldValue, @NewValue, @Action, @Severity, @Operator, @RunId, @Notes
             )";
 
         await connection.ExecuteAsync(sql, new
@@ -41,6 +41,7 @@ public class AuditRepository : IAuditRepository
             Action = auditEntry.Action,
             Severity = auditEntry.Severity,
             Operator = $"staff:{staffId}",
+            RunId = runId,
             Notes = notes
         });
     }
@@ -194,19 +195,118 @@ public class AuditRepository : IAuditRepository
     public async Task CleanupOldAuditRecordsAsync(int retentionDays)
     {
         using var connection = new SqlConnection(_connectionString);
-        
+
         var cutoffDate = DateTime.UtcNow.AddDays(-retentionDays);
-        
+
         var sql = @"
-            DELETE FROM acadsync.ExtPropAudit 
+            DELETE FROM acadsync.ExtPropAudit
             WHERE Timestamp < @CutoffDate;
-            
-            DELETE FROM acadsync.ValidationRuns 
+
+            DELETE FROM acadsync.ValidationRuns
             WHERE StartTime < @CutoffDate;
-            
-            DELETE FROM acadsync.SystemLog 
+
+            DELETE FROM acadsync.SystemLog
             WHERE Timestamp < @CutoffDate;";
 
         await connection.ExecuteAsync(sql, new { CutoffDate = cutoffDate });
+    }
+
+    public async Task<IEnumerable<AuditEntry>> GetRepairEventsAsync(DateTimeOffset? from, DateTimeOffset? to, string? ruleId, string? entityType, long? entityId, long? runId)
+    {
+        using var connection = new SqlConnection(_connectionString);
+
+        var whereClause = "WHERE Action LIKE 'repair:%'";
+        var parameters = new DynamicParameters();
+
+        if (from.HasValue)
+        {
+            whereClause += " AND Timestamp >= @From";
+            parameters.Add("From", from.Value);
+        }
+
+        if (to.HasValue)
+        {
+            whereClause += " AND Timestamp <= @To";
+            parameters.Add("To", to.Value);
+        }
+
+        if (!string.IsNullOrEmpty(ruleId))
+        {
+            whereClause += " AND RuleId = @RuleId";
+            parameters.Add("RuleId", ruleId);
+        }
+
+        if (!string.IsNullOrEmpty(entityType))
+        {
+            whereClause += " AND EntityType = @EntityType";
+            parameters.Add("EntityType", entityType);
+        }
+
+        if (entityId.HasValue)
+        {
+            whereClause += " AND EntityId = @EntityId";
+            parameters.Add("EntityId", entityId.Value);
+        }
+
+        if (runId.HasValue)
+        {
+            whereClause += " AND RunId = @RunId";
+            parameters.Add("RunId", runId.Value);
+        }
+
+        // Get latest repair for each (EntityType, EntityId, PropertyCode) combination
+        var sql = $@"
+            WITH RankedRepairs AS (
+                SELECT
+                    AuditId,
+                    Timestamp,
+                    RuleId,
+                    EntityType,
+                    EntityId,
+                    PropertyCode,
+                    OldValue,
+                    NewValue,
+                    Action,
+                    Severity,
+                    Operator,
+                    RunId,
+                    Notes,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY EntityType, EntityId, PropertyCode
+                        ORDER BY Timestamp DESC
+                    ) as RowNum
+                FROM acadsync.ExtPropAudit
+                {whereClause}
+            )
+            SELECT
+                AuditId,
+                Timestamp,
+                RuleId,
+                EntityType,
+                EntityId,
+                PropertyCode,
+                OldValue,
+                NewValue,
+                Action,
+                Severity,
+                Operator,
+                RunId,
+                Notes
+            FROM RankedRepairs
+            WHERE RowNum = 1
+            ORDER BY Timestamp DESC";
+
+        var results = await connection.QueryAsync<dynamic>(sql, parameters);
+
+        return results.Select(row => new AuditEntry(
+            row.RuleId,
+            row.EntityType,
+            row.EntityId,
+            row.PropertyCode,
+            row.OldValue,
+            row.NewValue,
+            row.Action,
+            row.Severity
+        ));
     }
 }

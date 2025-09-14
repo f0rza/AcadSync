@@ -1,7 +1,9 @@
 ﻿using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
-namespace AcadSync.Processor;
+namespace AcadSync.Processor.Utilities;
+
+using AcadSync.Processor.Models.Domain;
 
 // ------------------ Loader ------------------
 public static class EprlLoader

@@ -1,4 +1,6 @@
-﻿namespace AcadSync.Processor;
+﻿namespace AcadSync.Processor.Utilities;
+
+using AcadSync.Processor.Models.Projections;
 
 // ------------------ Path resolver (very small, dot + simple filters) ------------------
 public static class PathResolver

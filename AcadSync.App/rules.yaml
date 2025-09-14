@@ -200,6 +200,37 @@ rules:
           severity: "warning"
           actions: ["audit:annotate"]
 
+  # --- Expiration window violation (Spring 2024) ---
+  - id: "doc.expiry.spring2024.window"
+    name: "Set default Expiration Date for docs NOT in 2024-03-01..2024-05-01"
+    scope:
+      entity: "Document"
+    # Apply when date is NOT in the window
+    when:
+      none:
+        - all:
+            - gte: { path: "ext.Document Expiration Date", value: "2024-03-01" }
+            - lte: { path: "ext.Document Expiration Date", value: "2024-05-01" }
+    requirements:
+      - property: "Document Expiration Date"
+        type: "date"
+        required: true
+        normalize:
+          dateFormat: "yyyy-MM-dd"
+        constraints:
+          eq: "2025-01-01"               # demand the standardized default
+        source:
+          try:
+            - value: "2025-01-01"        # default value to use for repair
+        onFailure:
+          severity: "error"
+          actions:
+            - "repair:set-default"       # engine will set ProposedValue from source.try
+            - "audit:annotate"
+            - "notify:email"
+    # Important: set to repair to compute ProposedValue/actions
+    mode: "repair"
+
   # ========== FINANCIAL AID RULES ==========
   
   - id: "student.finaid.dependency.status"

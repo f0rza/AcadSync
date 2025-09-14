@@ -87,11 +87,13 @@ AcadSync.Audit/
 - Dynamic database name from connection string
 - Idempotent SQL script execution
 
-### ✅ Audit Functionality
+### ✅ Enhanced Audit Functionality
 - Complete audit trail for extended property changes
-- Validation run tracking
+- Validation run tracking with RunId support
 - System event logging
 - Statistical reporting
+- **Repair event retrieval for revert operations**
+- **RunId-based filtering for targeted operations**
 
 ### ✅ Configuration
 - Same configuration options in appsettings.json
@@ -144,5 +146,86 @@ info: AcadSync.Audit.Services.DatabaseInitializationService[0]
 3. **Reusability**: Other projects can use the audit functionality
 4. **Maintainability**: Clear separation makes code easier to maintain
 5. **Extensibility**: Easy to add new audit features without affecting business logic
+
+## New Features Added
+
+### Enhanced Audit Repository
+The audit repository has been enhanced with new capabilities specifically for the revert feature:
+
+#### GetRepairEventsAsync Method
+**Purpose**: Retrieve repair events for revert operations with flexible filtering
+
+**Parameters**:
+- `from` / `to`: Date range filtering
+- `ruleId`: Filter by specific rule
+- `entityType`: Filter by entity type (Student/Document)
+- `entityId`: Filter by specific entity ID
+- `runId`: Filter by validation run ID
+
+**Usage**:
+```csharp
+// Get all repairs from the last hour
+var repairs = await auditRepository.GetRepairEventsAsync(
+    from: DateTimeOffset.UtcNow.AddHours(-1));
+
+// Get repairs for specific rule and entity
+var repairs = await auditRepository.GetRepairEventsAsync(
+    ruleId: "doc.expiry.spring2024.window",
+    entityType: "Document");
+```
+
+#### Enhanced WriteAuditAsync Method
+**Purpose**: Write audit entries with optional RunId support
+
+**New Parameter**:
+- `runId`: Associate audit entry with a validation run
+
+**Usage**:
+```csharp
+await auditRepository.WriteAuditAsync(
+    auditEntry,
+    staffId: 1,
+    runId: currentRunId,
+    notes: "Repair operation");
+```
+
+### Audit Database Schema Updates
+The audit database schema has been updated to support the revert feature:
+
+#### New Columns in ExtPropAudit Table:
+- `RunId`: Links audit entries to validation runs
+- Enhanced indexing for better query performance
+
+#### ValidationRuns Table:
+- Tracks validation run metadata
+- Links to audit entries via RunId
+- Stores run statistics and timing information
+
+## Integration with Revert Feature
+
+The enhanced audit capabilities seamlessly integrate with the revert feature:
+
+1. **Audit Trail Preservation**: All revert operations are logged
+2. **Run Tracking**: Validation runs can be tracked and reverted as units
+3. **Safety Checks**: Current values are verified against audit history
+4. **Comprehensive Logging**: All operations have full audit trails
+
+## Usage Examples
+
+### Revert Operations with Audit Integration
+```csharp
+// Start a validation run
+var runId = await auditRepository.StartValidationRunAsync("repair", staffId: 1);
+
+// Perform repairs (each logged with runId)
+await repairService.RepairViolationsAsync(violations, staffId: 1, runId: runId);
+
+// Later, revert the entire run
+var repairs = await auditRepository.GetRepairEventsAsync(runId: runId);
+await revertService.RevertAsync(repairs, staffId: 1);
+
+// Complete the run with statistics
+await auditRepository.CompleteValidationRunAsync(runId, violations.Count, repairs.Count);
+```
 
 The extraction successfully achieved the goal of separating audit concerns while maintaining all existing functionality and improving the overall architecture.

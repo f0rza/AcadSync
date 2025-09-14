@@ -1,4 +1,4 @@
-﻿namespace AcadSync.Processor;
+﻿namespace AcadSync.Processor.Models.Projections;
 
 // ------------------ Entity projections ------------------
 // You can create separate projections per scope. Keep 'ext' as current ext-prop bag.
