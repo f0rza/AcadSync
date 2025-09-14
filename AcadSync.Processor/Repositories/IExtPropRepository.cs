@@ -33,9 +33,19 @@ public interface IExtPropRepository
     Task<List<ExtPropertyDefinition>> GetPropertyDefinitionsAsync(string entityType);
 
     /// <summary>
+    /// Get current property value directly from SyExtendedPropertyValue table
+    /// </summary>
+    Task<string?> GetCurrentPropertyValueAsync(string entityType, long entityId, string propertyCode);
+
+    /// <summary>
     /// Test database connection
     /// </summary>
     Task<bool> TestConnectionAsync();
+
+    /// <summary>
+    /// Delete the extended property value for an entity (returns true if a row was deleted)
+    /// </summary>
+    Task<bool> DeleteExtPropertyAsync(string entityType, long entityId, string propertyCode);
 }
 
 /// <summary>

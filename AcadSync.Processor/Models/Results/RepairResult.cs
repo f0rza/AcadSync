@@ -71,11 +71,16 @@ public class RepairResult
     public Exception? Exception { get; set; }
 
     /// <summary>
-    /// Success rate as a percentage
+    /// Success rate as a percentage (computed from successful + failed repairs to avoid relying on a separate counter)
     /// </summary>
-    public double SuccessRate => TotalViolationsAttempted > 0 
-        ? (double)SuccessfulRepairs / TotalViolationsAttempted * 100 
-        : 0;
+    public double SuccessRate
+    {
+        get
+        {
+            var total = SuccessfulRepairs + FailedRepairs;
+            return total > 0 ? (double)SuccessfulRepairs / total * 100.0 : 0.0;
+        }
+    }
 }
 
 /// <summary>

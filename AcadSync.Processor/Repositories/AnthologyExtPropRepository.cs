@@ -18,6 +18,21 @@ public class AnthologyExtPropRepository : IExtPropRepository
         _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
     }
 
+    // Normalize logical entity names used in rules to the physical EntityName values used in Anthology
+    private static string NormalizeEntityName(string entityType)
+    {
+        if (string.IsNullOrWhiteSpace(entityType)) return entityType ?? string.Empty;
+
+        return entityType.Trim() switch
+        {
+            // common mappings
+            "Student" => "syStudent",
+            "StudentProjection" => "syStudent",
+            "Document" => "Document",
+            _ => entityType // fallback: assume caller passed the correct physical name
+        };
+    }
+
     public async Task<List<StudentProjection>> GetStudentsAsync(string? programFilter = null, string? statusFilter = null)
     {
         using var connection = new SqlConnection(_connectionString);
@@ -288,6 +303,44 @@ public class AnthologyExtPropRepository : IExtPropRepository
         return (false, null, false, null, false, null, true, trimmed);
     }
 
+    public async Task<string?> GetCurrentPropertyValueAsync(string entityType, long entityId, string propertyCode)
+    {
+        using var connection = new SqlConnection(_connectionString);
+
+        var dbEntity = NormalizeEntityName(entityType);
+
+        var sql = @"
+            SELECT TOP 1 COALESCE(epv.StringValue, 
+                          CASE WHEN epv.DecimalValue IS NOT NULL THEN CAST(epv.DecimalValue AS NVARCHAR(512)) END,
+                          CASE WHEN epv.DateTimeValue IS NOT NULL THEN CONVERT(NVARCHAR(512), epv.DateTimeValue, 121) END,
+                          CASE WHEN epv.BooleanValue IS NOT NULL THEN CAST(epv.BooleanValue AS NVARCHAR(512)) END,
+                          epv.MultiValue) as ExtValue
+            FROM dbo.SyExtendedPropertyValue epv WITH (NOLOCK)
+            INNER JOIN dbo.SyExtendedPropertyDefinition ep WITH (NOLOCK)
+                ON ep.SyExtendedPropertyDefinitionId = epv.SyExtendedPropertyDefinitionId
+                AND ep.EntityName = @EntityName
+                AND ep.Name = @PropertyCode
+                AND ep.IsActive = 1
+            WHERE epv.EntityId = @EntityId
+            ORDER BY epv.DateLstMod DESC;";
+
+        try
+        {
+            return await connection.QuerySingleOrDefaultAsync<string?>(sql, new
+            {
+                EntityName = dbEntity,
+                PropertyCode = propertyCode,
+                EntityId = entityId
+            });
+        }
+        catch (Exception ex)
+        {
+            // Log to console as repository doesn't have logger; callers will handle null
+            Console.WriteLine($"GetCurrentPropertyValueAsync failed for {entityType}#{entityId}.{propertyCode}: {ex.Message}");
+            return null;
+        }
+    }
+
     public async Task<int?> ResolvePropertyIdAsync(string entityType, string propertyCode)
     {
         var cacheKey = $"{entityType}:{propertyCode}";
@@ -350,5 +403,30 @@ public class AnthologyExtPropRepository : IExtPropRepository
         {
             return false;
         }
+    }
+
+    public async Task<bool> DeleteExtPropertyAsync(string entityType, long entityId, string propertyCode)
+    {
+        using var connection = new SqlConnection(_connectionString);
+
+        // Normalize entity name for definition lookups
+        var dbEntity = NormalizeEntityName(entityType);
+
+        // Resolve property id
+        var propId = await ResolvePropertyIdAsync(dbEntity, propertyCode);
+        if (!propId.HasValue)
+            return false;
+
+        var sql = @"
+            DELETE FROM dbo.SyExtendedPropertyValue
+            WHERE EntityId = @EntityId AND SyExtendedPropertyDefinitionId = @PropertyId;";
+
+        var affected = await connection.ExecuteAsync(sql, new
+        {
+            EntityId = entityId,
+            PropertyId = propId.Value
+        });
+
+        return affected > 0;
     }
 }

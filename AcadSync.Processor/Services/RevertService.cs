@@ -31,6 +31,7 @@ public class RevertService : IRevertService
     {
         var result = new RepairResult { StaffId = staffId };
         var repairsList = repairs.ToList();
+        result.TotalViolationsAttempted = repairsList.Count;
 
         _logger.LogInformation("Starting revert operation for {RepairCount} repairs (Staff ID: {StaffId}, Force: {Force}, DryRun: {DryRun})",
             repairsList.Count, staffId, force, dryRun);
@@ -149,25 +150,52 @@ public class RevertService : IRevertService
 
         try
         {
-            // If OldValue is null, we need to delete the property value
+            bool writeSuccess = false;
+
             if (string.IsNullOrEmpty(repair.CurrentValue))
             {
-                await DeletePropertyValueAsync(repair.EntityType, repair.EntityId, repair.PropertyCode);
-                _logger.LogDebug("Deleted property {EntityType}#{EntityId}.{PropertyCode}",
-                    repair.EntityType, repair.EntityId, repair.PropertyCode);
+                // Delete path for null target
+                if (dryRun)
+                {
+                    _logger.LogInformation("[DRY RUN] Would delete property {EntityType}#{EntityId}.{PropertyCode}",
+                        repair.EntityType, repair.EntityId, repair.PropertyCode);
+                    writeSuccess = true;
+                }
+                else
+                {
+                    writeSuccess = await _extPropRepository.DeleteExtPropertyAsync(repair.EntityType, repair.EntityId, repair.PropertyCode);
+                    if (!writeSuccess)
+                        _logger.LogWarning("Delete did not remove any row for {EntityType}#{EntityId}.{PropertyCode}", repair.EntityType, repair.EntityId, repair.PropertyCode);
+                }
             }
             else
             {
-                // Otherwise, set it back to the old value
-                await _extPropRepository.UpsertExtPropertyAsync(
-                    repair.EntityType,
-                    repair.EntityId,
-                    repair.PropertyCode,
-                    repair.CurrentValue,
-                    staffId);
+                // Upsert path for non-null target
+                if (dryRun)
+                {
+                    _logger.LogInformation("[DRY RUN] Would upsert {EntityType}#{EntityId}.{PropertyCode} => '{Target}'",
+                        repair.EntityType, repair.EntityId, repair.PropertyCode, repair.CurrentValue);
+                    writeSuccess = true;
+                }
+                    else
+                {
+                    await _extPropRepository.UpsertExtPropertyAsync(repair.EntityType, repair.EntityId, repair.PropertyCode, repair.CurrentValue, staffId);
 
-                _logger.LogDebug("Reverted {EntityType}#{EntityId}.{PropertyCode} to '{OldValue}'",
-                    repair.EntityType, repair.EntityId, repair.PropertyCode, repair.CurrentValue);
+                    // Re-read to verify the write took effect
+                    var afterValue = await GetCurrentPropertyValueAsync(repair.EntityType, repair.EntityId, repair.PropertyCode);
+                    writeSuccess = await ValuesMatchForRevertAsync(afterValue, repair.CurrentValue, repair.EntityType, repair.PropertyCode);
+                    if (!writeSuccess)
+                    {
+                        _logger.LogWarning("Post-write verification failed for {EntityType}#{EntityId}.{PropertyCode}. Expected '{Expected}' but found '{Actual}'",
+                            repair.EntityType, repair.EntityId, repair.PropertyCode, repair.CurrentValue, afterValue);
+                    }
+                }
+            }
+
+            if (!writeSuccess)
+            {
+                _logger.LogWarning("Revert write failed for {EntityType}#{EntityId}.{PropertyCode}", repair.EntityType, repair.EntityId, repair.PropertyCode);
+                return false;
             }
 
             // Log the revert operation (ensure datetime formatting when applicable)
@@ -200,36 +228,17 @@ public class RevertService : IRevertService
 
     private async Task<string?> GetCurrentPropertyValueAsync(string entityType, long entityId, string propertyCode)
     {
-        // This is a simplified implementation - in a real scenario you'd need to add this method to IExtPropRepository
-        // For now, we'll use a basic approach
         try
         {
-            if (entityType == "Document")
-            {
-                var documents = await _extPropRepository.GetDocumentsAsync();
-                var document = documents.FirstOrDefault(e => e.EntityId == entityId);
-                if (document?.Ext.TryGetValue(propertyCode, out var value) == true)
-                {
-                    return value;
-                }
-            }
-            else if (entityType == "Student")
-            {
-                var students = await _extPropRepository.GetStudentsAsync();
-                var student = students.FirstOrDefault(e => e.EntityId == entityId);
-                if (student?.Ext.TryGetValue(propertyCode, out var value) == true)
-                {
-                    return value;
-                }
-            }
+            // Use repository's live read (will normalize entity name internally)
+            return await _extPropRepository.GetCurrentPropertyValueAsync(entityType, entityId, propertyCode);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to get current value for {EntityType}#{EntityId}.{PropertyCode}",
                 entityType, entityId, propertyCode);
+            return null;
         }
-
-        return null;
     }
 
     private async Task DeletePropertyValueAsync(string entityType, long entityId, string propertyCode)
