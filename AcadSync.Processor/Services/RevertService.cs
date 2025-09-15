@@ -27,7 +27,7 @@ public class RevertService : IRevertService
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public async Task<RepairResult> RevertAsync(IEnumerable<AuditEntry> repairs, bool force = false, int staffId = 1, bool dryRun = false)
+    public async Task<RepairResult> RevertAsync(IEnumerable<AuditEntry> repairs, bool force = false, int staffId = 1, bool dryRun = false, long? runId = null)
     {
         var result = new RepairResult { StaffId = staffId };
         var repairsList = repairs.ToList();
@@ -47,7 +47,7 @@ public class RevertService : IRevertService
         {
             try
             {
-                var success = await RevertSingleRepairAsync(repair, force, staffId, dryRun);
+                var success = await RevertSingleRepairAsync(repair, force, staffId, dryRun, runId);
                 if (success)
                 {
                     result.SuccessfulRepairs++;
@@ -121,10 +121,10 @@ public class RevertService : IRevertService
 
         _logger.LogInformation("Found {RepairCount} repair events to revert", repairs.Count());
 
-        return await RevertAsync(repairs, force, staffId, dryRun);
+        return await RevertAsync(repairs, force, staffId, dryRun, runId);
     }
 
-    private async Task<bool> RevertSingleRepairAsync(AuditEntry repair, bool force, int staffId, bool dryRun)
+    private async Task<bool> RevertSingleRepairAsync(AuditEntry repair, bool force, int staffId, bool dryRun, long? runId)
     {
         _logger.LogDebug("Reverting {EntityType}#{EntityId}.{PropertyCode}: '{NewValue}' → '{OldValue}'",
             repair.EntityType, repair.EntityId, repair.PropertyCode, repair.ProposedValue, repair.CurrentValue);
@@ -151,6 +151,7 @@ public class RevertService : IRevertService
         try
         {
             bool writeSuccess = false;
+            string? failureReason = null;
 
             if (string.IsNullOrEmpty(repair.CurrentValue))
             {
@@ -165,7 +166,10 @@ public class RevertService : IRevertService
                 {
                     writeSuccess = await _extPropRepository.DeleteExtPropertyAsync(repair.EntityType, repair.EntityId, repair.PropertyCode);
                     if (!writeSuccess)
+                    {
+                        failureReason = "Delete did not remove any row";
                         _logger.LogWarning("Delete did not remove any row for {EntityType}#{EntityId}.{PropertyCode}", repair.EntityType, repair.EntityId, repair.PropertyCode);
+                    }
                 }
             }
             else
@@ -177,7 +181,7 @@ public class RevertService : IRevertService
                         repair.EntityType, repair.EntityId, repair.PropertyCode, repair.CurrentValue);
                     writeSuccess = true;
                 }
-                    else
+                else
                 {
                     await _extPropRepository.UpsertExtPropertyAsync(repair.EntityType, repair.EntityId, repair.PropertyCode, repair.CurrentValue, staffId);
 
@@ -186,6 +190,7 @@ public class RevertService : IRevertService
                     writeSuccess = await ValuesMatchForRevertAsync(afterValue, repair.CurrentValue, repair.EntityType, repair.PropertyCode);
                     if (!writeSuccess)
                     {
+                        failureReason = $"Post-write verification failed. Expected '{repair.CurrentValue}' but found '{afterValue}'";
                         _logger.LogWarning("Post-write verification failed for {EntityType}#{EntityId}.{PropertyCode}. Expected '{Expected}' but found '{Actual}'",
                             repair.EntityType, repair.EntityId, repair.PropertyCode, repair.CurrentValue, afterValue);
                     }
@@ -195,6 +200,31 @@ public class RevertService : IRevertService
             if (!writeSuccess)
             {
                 _logger.LogWarning("Revert write failed for {EntityType}#{EntityId}.{PropertyCode}", repair.EntityType, repair.EntityId, repair.PropertyCode);
+
+                // Persist failure audit so failures are queryable by RunId
+                try
+                {
+                    var formattedCurrentFail = await FormatDateForAuditIfNeededAsync(repair.EntityType, repair.PropertyCode, currentValue);
+                    var formattedTargetFail = await FormatDateForAuditIfNeededAsync(repair.EntityType, repair.PropertyCode, repair.CurrentValue);
+
+                    var failAudit = new AuditEntry(
+                        repair.RuleId,
+                        repair.EntityType,
+                        repair.EntityId,
+                        repair.PropertyCode,
+                        formattedCurrentFail,
+                        formattedTargetFail,
+                        "revert:failed",
+                        "error"
+                    );
+
+                    await _auditRepository.WriteAuditAsync(failAudit, staffId, failureReason, runId);
+                }
+                catch (Exception exAudit)
+                {
+                    _logger.LogError(exAudit, "Failed to write failure audit for {EntityType}#{EntityId}.{PropertyCode}", repair.EntityType, repair.EntityId, repair.PropertyCode);
+                }
+
                 return false;
             }
 
@@ -214,7 +244,7 @@ public class RevertService : IRevertService
             );
 
             await _auditRepository.WriteAuditAsync(revertAudit, staffId,
-                $"Reverted repair from audit entry. Original repair set '{repair.ProposedValue}'");
+                $"Reverted repair from audit entry. Original repair set '{repair.ProposedValue}'", runId);
 
             return true;
         }

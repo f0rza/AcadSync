@@ -11,7 +11,7 @@ public interface IRevertService
     /// <summary>
     /// Revert a collection of repair operations
     /// </summary>
-    Task<RepairResult> RevertAsync(IEnumerable<AuditEntry> repairs, bool force = false, int staffId = 1, bool dryRun = false);
+    Task<RepairResult> RevertAsync(IEnumerable<AuditEntry> repairs, bool force = false, int staffId = 1, bool dryRun = false, long? runId = null);
 
     /// <summary>
     /// Revert repairs based on filter criteria
