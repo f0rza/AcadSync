@@ -39,7 +39,7 @@ public class RepairService : IRepairService
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public async Task<RepairResult> RepairViolationsAsync(IEnumerable<Violation> violations, int staffId = 1)
+    public async Task<RepairResult> RepairViolationsAsync(IEnumerable<Violation> violations, int staffId = 1, long? runId = null)
     {
         var result = new RepairResult { StaffId = staffId };
         var violationsList = violations.ToList();
@@ -47,8 +47,8 @@ public class RepairService : IRepairService
 
         result.TotalViolationsAttempted = repairableViolations.Count;
 
-        _logger.LogInformation("Starting repair process for {RepairableCount} violations out of {TotalCount} total (Staff ID: {StaffId})", 
-            repairableViolations.Count, violationsList.Count, staffId);
+        _logger.LogInformation("Starting repair process for {RepairableCount} violations out of {TotalCount} total (Staff ID: {StaffId}, Run ID: {RunId})",
+            repairableViolations.Count, violationsList.Count, staffId, runId);
 
         if (!repairableViolations.Any())
         {
@@ -61,8 +61,8 @@ public class RepairService : IRepairService
         {
             try
             {
-                var success = await RepairViolationAsync(violation, staffId);
-                
+                var success = await RepairViolationAsync(violation, staffId, runId);
+
                 if (success)
                 {
                     result.SuccessfulRepairs++;
@@ -122,7 +122,7 @@ public class RepairService : IRepairService
         return result;
     }
 
-    public async Task<bool> RepairViolationAsync(Violation violation, int staffId = 1)
+    public async Task<bool> RepairViolationAsync(Violation violation, int staffId = 1, long? runId = null)
     {
         if (!CanRepairViolation(violation))
         {
@@ -150,7 +150,8 @@ public class RepairService : IRepairService
             await _auditRepository.WriteAuditAsync(
                 successAudit,
                 staffId,
-                $"Auto-repaired by AcadSync: {violation.RuleId}"
+                $"Auto-repaired by AcadSync: {violation.RuleId}",
+                runId
             );
 
             return true;
@@ -167,7 +168,8 @@ public class RepairService : IRepairService
                 await _auditRepository.WriteAuditAsync(
                     failAudit,
                     staffId,
-                    $"Repair failed: {ex.Message}"
+                    $"Repair failed: {ex.Message}",
+                    runId
                 );
             }
             catch (Exception auditEx)
@@ -205,19 +207,19 @@ public class RepairService : IRepairService
         return violations.Where(CanRepairViolation);
     }
 
-    public async Task<ValidationAndRepairResult> ValidateAndRepairAsync(IEnumerable<IEntityProjection> entities, int staffId = 1)
+    public async Task<ValidationAndRepairResult> ValidateAndRepairAsync(IEnumerable<IEntityProjection> entities, int staffId = 1, long? runId = null)
     {
         var result = new ValidationAndRepairResult();
         var entitiesList = entities.ToList();
 
-        _logger.LogInformation("Starting combined validation and repair process for {EntityCount} entities (Staff ID: {StaffId})", 
-            entitiesList.Count, staffId);
+        _logger.LogInformation("Starting combined validation and repair process for {EntityCount} entities (Staff ID: {StaffId}, Run ID: {RunId})",
+            entitiesList.Count, staffId, runId);
 
         try
         {
             // Phase 1: Validation
             _logger.LogInformation("Phase 1: Validation");
-            
+
             // Load rules and perform validation directly
             var doc = await _ruleLoader.LoadRulesAsync();
             var violations = await _ruleEngine.EvaluateAsync(doc, entitiesList);
@@ -235,7 +237,7 @@ public class RepairService : IRepairService
                 RuleCount = doc.Rules.Count
             };
             result.ValidationResult.Violations.AddRange(violationsList);
-            
+
             // Calculate summary statistics
             result.ValidationResult.Summary.EntitiesProcessed = entitiesList.Count;
             result.ValidationResult.Summary.TotalViolations = violationsList.Count;
@@ -250,14 +252,14 @@ public class RepairService : IRepairService
             if (violationsList.Any())
             {
                 _logger.LogInformation("Phase 2: Repair ({ViolationCount} violations found)", violationsList.Count);
-                result.RepairResult = await RepairViolationsAsync(violationsList, staffId);
+                result.RepairResult = await RepairViolationsAsync(violationsList, staffId, runId);
             }
             else
             {
                 _logger.LogInformation("No violations found during validation - skipping repair phase");
             }
 
-            _logger.LogInformation("Combined validation and repair completed successfully in {Duration}ms", 
+            _logger.LogInformation("Combined validation and repair completed successfully in {Duration}ms",
                 result.TotalDuration.TotalMilliseconds);
 
             return result;
@@ -265,7 +267,7 @@ public class RepairService : IRepairService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Combined validation and repair process failed");
-            
+
             // If validation succeeded but repair failed, we still want to return the validation results
             if (result.ValidationResult.IsSuccess && result.RepairResult != null)
             {

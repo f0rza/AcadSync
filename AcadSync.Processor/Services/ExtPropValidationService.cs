@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using AcadSync.Processor.Interfaces;
 using AcadSync.Processor.Models.Results;
+using AcadSync.Audit.Interfaces;
 
 namespace AcadSync.Processor.Services;
 
@@ -14,6 +15,7 @@ public class ExtPropValidationService
     private readonly IRepairService _repairService;
     private readonly IRevertService _revertService;
     private readonly IEntityService _entityService;
+    private readonly IAuditRepository _auditRepository;
     private readonly ILogger<ExtPropValidationService> _logger;
 
     public ExtPropValidationService(
@@ -21,12 +23,14 @@ public class ExtPropValidationService
         IRepairService repairService,
         IRevertService revertService,
         IEntityService entityService,
+        IAuditRepository auditRepository,
         ILogger<ExtPropValidationService> logger)
     {
         _validationService = validationService ?? throw new ArgumentNullException(nameof(validationService));
         _repairService = repairService ?? throw new ArgumentNullException(nameof(repairService));
         _revertService = revertService ?? throw new ArgumentNullException(nameof(revertService));
         _entityService = entityService ?? throw new ArgumentNullException(nameof(entityService));
+        _auditRepository = auditRepository ?? throw new ArgumentNullException(nameof(auditRepository));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -65,19 +69,27 @@ public class ExtPropValidationService
 
         try
         {
+            // Start validation run to get RunId
+            var runId = await _auditRepository.StartValidationRunAsync("repair", staffId, "Auto repair operation");
+
             // Get all entities
             var entities = await _entityService.GetAllEntitiesAsync();
-            
-            // Perform validation and repair
-            var result = await _repairService.ValidateAndRepairAsync(entities, staffId);
+
+            // Perform validation and repair with RunId
+            var result = await _repairService.ValidateAndRepairAsync(entities, staffId, runId);
 
             if (!result.IsSuccess)
             {
                 throw new InvalidOperationException($"Validation and repair failed: {result.ErrorMessage}");
             }
 
-            _logger.LogInformation("Validation and repair completed successfully");
-            
+            // Complete the validation run
+            var violationCount = result.ValidationResult?.Summary.TotalViolations ?? 0;
+            var repairedCount = result.RepairResult?.SuccessfulRepairs ?? 0;
+            await _auditRepository.CompleteValidationRunAsync(runId, violationCount, repairedCount, "Completed successfully");
+
+            _logger.LogInformation("Validation and repair completed successfully (Run ID: {RunId})", runId);
+
             if (result.RepairResult != null)
             {
                 _logger.LogInformation("Repair summary: {SuccessfulRepairs} successful, {FailedRepairs} failed, {SuccessRate:F1}% success rate",
@@ -221,7 +233,7 @@ public class ExtPropValidationService
         try
         {
             var entities = await _entityService.GetAllEntitiesAsync();
-            var result = await _repairService.ValidateAndRepairAsync(entities, staffId);
+            var result = await _repairService.ValidateAndRepairAsync(entities, staffId, null);
 
             _logger.LogInformation("Detailed repair completed in {Duration}ms", result.TotalDuration.TotalMilliseconds);
 
