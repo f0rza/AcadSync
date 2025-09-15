@@ -5,23 +5,23 @@ using AcadSync.Processor.Models.Results;
 namespace AcadSync.Processor.Services;
 
 /// <summary>
-/// Refactored Extended Property validation service using the new architecture
+/// Extended Property validation service using the new architecture
 /// This replaces the original ExtPropValidationService with better separation of concerns
 /// </summary>
-public class RefactoredExtPropValidationService
+public class ExtPropValidationService
 {
     private readonly IValidationService _validationService;
     private readonly IRepairService _repairService;
     private readonly IRevertService _revertService;
     private readonly IEntityService _entityService;
-    private readonly ILogger<RefactoredExtPropValidationService> _logger;
+    private readonly ILogger<ExtPropValidationService> _logger;
 
-    public RefactoredExtPropValidationService(
+    public ExtPropValidationService(
         IValidationService validationService,
         IRepairService repairService,
         IRevertService revertService,
         IEntityService entityService,
-        ILogger<RefactoredExtPropValidationService> logger)
+        ILogger<ExtPropValidationService> logger)
     {
         _validationService = validationService ?? throw new ArgumentNullException(nameof(validationService));
         _repairService = repairService ?? throw new ArgumentNullException(nameof(repairService));
