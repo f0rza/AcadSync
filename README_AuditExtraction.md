@@ -60,7 +60,8 @@ AcadSync.Audit/
 ├── Services/
 │   └── DatabaseInitializationService.cs
 ├── Models/
-│   └── AuditEntry.cs (includes AuditStatistics)
+│   ├── AuditEntry.cs
+│   └── AuditStatistics.cs
 ├── Extensions/
 │   └── ViolationExtensions.cs
 └── SqlScripts/

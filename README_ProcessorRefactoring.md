@@ -36,20 +36,41 @@ AcadSync.Processor/
 │   ├── IEntityService.cs                # Entity data retrieval
 │   ├── IValidationService.cs            # Main orchestration
 │   ├── IRepairService.cs                # Violation repair logic
-│   └── IRevertService.cs                # Repair revert operations
+│   ├── IRevertService.cs                # Repair revert operations
+│   ├── IRuleLoader.cs                   # Rule loading interface
+│   └── IEntityService.cs                # Entity service interface
 ├── Models/
+│   ├── Domain/                          # Domain models
+│   │   ├── Rule.cs
+│   │   ├── Condition.cs
+│   │   ├── Requirement.cs
+│   │   └── RequirementConstraints.cs
+│   ├── Projections/                     # Data transfer objects
+│   │   ├── StudentProjection.cs
+│   │   ├── DocumentProjection.cs
+│   │   └── IEntityProjection.cs
 │   └── Results/                         # Result models
 │       ├── ValidationResult.cs
 │       ├── RepairResult.cs
-│       └── SystemHealthResult.cs
-└── Services/
-    ├── RuleEngine.cs                    # Non-static rule evaluator
-    ├── FileSystemRuleLoader.cs          # YAML rule loading with caching
-    ├── EntityService.cs                 # Entity retrieval orchestration
-    ├── ValidationOrchestrator.cs        # Main validation workflow
-    ├── RepairService.cs                 # Violation repair logic
-    ├── RevertService.cs                 # Repair revert operations
-    └── RefactoredExtPropValidationService.cs  # Backward-compatible facade
+│       ├── SystemHealthResult.cs
+│       └── RepairResult.cs
+├── Repositories/
+│   ├── AnthologyExtPropRepository.cs    # Anthology data access
+│   └── IExtPropRepository.cs            # Repository interface
+├── Services/
+│   ├── RuleEngine.cs                    # Non-static rule evaluator
+│   ├── FileSystemRuleLoader.cs          # YAML rule loading with caching
+│   ├── EntityService.cs                 # Entity retrieval orchestration
+│   ├── ValidationOrchestrator.cs        # Main validation workflow
+│   ├── RepairService.cs                 # Violation repair logic
+│   ├── RevertService.cs                 # Repair revert operations
+│   └── RefactoredExtPropValidationService.cs  # Backward-compatible facade
+├── SqlScripts/
+│   └── CreateAcadSyncDatabase.sql       # Database initialization
+└── Utilities/
+    ├── EprlLoader.cs                    # EPR load utilities
+    ├── PathResolver.cs                  # Path resolution utilities
+    └── Evaluator.cs                     # Legacy evaluator (being phased out)
 ```
 
 ## Key Components

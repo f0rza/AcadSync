@@ -38,15 +38,14 @@ AcadSync now uses a dual-database architecture to ensure complete separation bet
 
 ### 1. Create AcadSync Audit Database
 
-Run the following SQL scripts in order:
+The audit database is automatically created on application startup. However, if you need to create it manually, run the following SQL scripts in order:
 
 ```sql
 -- 1. Create database and schema
-.\AcadSync.Processor\SqlScripts\CreateAcadSyncDatabase.sql
-
--- 2. Create audit tables
-.\AcadSync.Processor\SqlScripts\CreateAuditTable.sql
+.\AcadSync.Audit\SqlScripts\CreateAuditDatabase.sql
 ```
+
+**Note**: Manual database creation is typically not required as the application handles this automatically during startup.
 
 ### 2. Configure Connection Strings
 
