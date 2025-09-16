@@ -23,11 +23,27 @@ public class FileSystemRuleLoader : IRuleLoader
 
     public async Task<EprlDoc> LoadRulesAsync()
     {
-        var filePath = Path.IsPathRooted(_options.RulesFilePath) 
-            ? _options.RulesFilePath 
+        var filePath = Path.IsPathRooted(_options.RulesFilePath)
+            ? _options.RulesFilePath
             : Path.Combine(Directory.GetCurrentDirectory(), _options.RulesFilePath);
 
-        return await LoadRulesFromFileAsync(filePath);
+        // First try the configured path
+        if (File.Exists(filePath))
+        {
+            return await LoadRulesFromFileAsync(filePath);
+        }
+
+        // Fallback: try AcadSync.App/rules.yaml
+        var fallbackPath = Path.Combine(Directory.GetCurrentDirectory(), "AcadSync.App", "rules.yaml");
+        if (File.Exists(fallbackPath))
+        {
+            _logger.LogInformation("Rules file not found at configured path '{ConfiguredPath}', using fallback path '{FallbackPath}'",
+                filePath, fallbackPath);
+            return await LoadRulesFromFileAsync(fallbackPath);
+        }
+
+        // If neither path exists, throw error for the original configured path
+        throw new FileNotFoundException($"Rules file not found: {filePath}");
     }
 
     public async Task<EprlDoc> LoadRulesFromFileAsync(string filePath)
@@ -109,11 +125,24 @@ public class FileSystemRuleLoader : IRuleLoader
         if (!_options.Cache.EnableRuleCache)
             return false;
 
-        var filePath = Path.IsPathRooted(_options.RulesFilePath) 
-            ? _options.RulesFilePath 
+        var filePath = Path.IsPathRooted(_options.RulesFilePath)
+            ? _options.RulesFilePath
             : Path.Combine(Directory.GetCurrentDirectory(), _options.RulesFilePath);
 
-        return TryGetFromCache(filePath, out _);
+        // First try the configured path
+        if (File.Exists(filePath) && TryGetFromCache(filePath, out _))
+        {
+            return true;
+        }
+
+        // Fallback: try AcadSync.App/rules.yaml
+        var fallbackPath = Path.Combine(Directory.GetCurrentDirectory(), "AcadSync.App", "rules.yaml");
+        if (File.Exists(fallbackPath) && TryGetFromCache(fallbackPath, out _))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private bool TryGetFromCache(string filePath, out EprlDoc doc)

@@ -1,4 +1,4 @@
-﻿using System.Text.RegularExpressions;
+using System.Text.RegularExpressions;
 
 namespace AcadSync.Processor;
 
@@ -18,10 +18,10 @@ public static class Evaluator
 
                 foreach (var req in rule.Requirements)
                 {
-                    var current = entity.Ext.TryGetValue(req.Property, out var v) ? v : null;
+                    var current = entity.Ext.TryGetValue(req.property, out var v) ? v : null;
 
                     // Apply normalization preview on current (without writing)
-                    var normalizedCurrent = Normalize(current, req.Normalize, req.Type);
+                    var normalizedCurrent = Normalize(current, req.normalize, req.type);
 
                     var (ok, reason) = Check(req, normalizedCurrent);
                     if (ok) continue;
@@ -29,17 +29,17 @@ public static class Evaluator
                     // Try to derive a value if we are allowed to "repair"
                     string? proposed = normalizedCurrent;
 
-                    if ((mode == EprlMode.repair || mode == EprlMode.simulate) && req.Source?.@try != null)
+                    if ((mode == EprlMode.repair || mode == EprlMode.simulate) && req.source?.@try != null)
                     {
-                        foreach (var step in req.Source.@try)
+                        foreach (var step in req.source.@try)
                         {
                             object? val = null;
                             if (step.value is not null) val = step.value;
                             else if (!string.IsNullOrWhiteSpace(step.path)) val = entity.ResolvePath(step.path);
                             // step.sql/expression intentionally skipped in tiny evaluator (you can plug repo later)
 
-                            var str = CoerceToString(val, req.Type, req.Normalize);
-                            var norm = Normalize(str, req.Normalize, req.Type);
+                            var str = CoerceToString(val, req.type, req.normalize);
+                            var norm = Normalize(str, req.normalize, req.type);
                             var (ok2, _) = Check(req, norm);
                             if (ok2)
                             {
@@ -49,16 +49,16 @@ public static class Evaluator
                         }
                     }
 
-                    var sev = req.OnFailure?.severity
+                    var sev = req.onFailure?.severity
                               ?? rule.OnGroupFailure?.severity
                               ?? (doc.Defaults?.Severity ?? Severity.error);
 
                     var action = (mode == EprlMode.repair || mode == EprlMode.simulate)
-                                 ? (req.OnFailure?.actions?.FirstOrDefault(a => a.StartsWith("repair:")) ?? "repair:upsert")
+                                 ? (req.onFailure?.actions?.FirstOrDefault(a => a.StartsWith("repair:")) ?? "repair:upsert")
                                  : "none";
 
                     ruleViolations.Add(new Violation(
-                        rule.Id, entity.EntityType, entity.EntityId, req.Property,
+                        rule.Id, entity.EntityType, entity.EntityId, req.property,
                         current, proposed, reason, sev, action
                     ));
                 }
@@ -128,13 +128,13 @@ public static class Evaluator
     private static (bool ok, string reason) Check(Requirement req, string? value)
     {
         // Required check
-        if (req.Required && string.IsNullOrWhiteSpace(value))
+        if (req.required && string.IsNullOrWhiteSpace(value))
             return (false, "required");
 
         if (string.IsNullOrWhiteSpace(value))
             return (true, "empty-ok");
 
-        var c = req.Constraints;
+        var c = req.constraints;
         if (c is null) return (true, "ok");
 
         // regex

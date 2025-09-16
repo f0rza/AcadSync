@@ -12,16 +12,18 @@ public interface IRepairService
     /// </summary>
     /// <param name="violations">Violations to repair</param>
     /// <param name="staffId">Staff ID performing the repair</param>
+    /// <param name="runId">Run ID for tracking this repair operation</param>
     /// <returns>Repair result with success/failure details</returns>
-    Task<RepairResult> RepairViolationsAsync(IEnumerable<Violation> violations, int staffId = 1);
+    Task<RepairResult> RepairViolationsAsync(IEnumerable<Violation> violations, int staffId = 1, long? runId = null);
 
     /// <summary>
     /// Apply repair for a single violation
     /// </summary>
     /// <param name="violation">Violation to repair</param>
     /// <param name="staffId">Staff ID performing the repair</param>
+    /// <param name="runId">Run ID for tracking this repair operation</param>
     /// <returns>True if repair was successful</returns>
-    Task<bool> RepairViolationAsync(Violation violation, int staffId = 1);
+    Task<bool> RepairViolationAsync(Violation violation, int staffId = 1, long? runId = null);
 
     /// <summary>
     /// Check if a violation can be automatically repaired
@@ -42,6 +44,7 @@ public interface IRepairService
     /// </summary>
     /// <param name="entities">Entities to validate and repair</param>
     /// <param name="staffId">Staff ID performing the repair</param>
+    /// <param name="runId">Run ID for tracking this repair operation</param>
     /// <returns>Combined validation and repair result</returns>
-    Task<ValidationAndRepairResult> ValidateAndRepairAsync(IEnumerable<IEntityProjection> entities, int staffId = 1);
+    Task<ValidationAndRepairResult> ValidateAndRepairAsync(IEnumerable<IEntityProjection> entities, int staffId = 1, long? runId = null);
 }
