@@ -1,0 +1,18 @@
+apiVersion: eprl.v1
+tenant: "test-university"
+ruleset:
+  id: "test-rules"
+  name: "Test Rules"
+  version: 1
+defaults:
+  mode: "validate"
+  severity: "error"
+rules:
+  - id: "test.rule"
+    name: "Test rule"
+    scope:
+      entity: "Student"
+    requirements:
+      - property: "TestProperty"
+        type: "string"
+        required: true
