@@ -7,12 +7,12 @@ The AcadSync application now includes automatic database initialization that run
 ## Features Implemented
 
 ### 1. DatabaseInitializationService
-- **Location**: `AcadSync.Processor/DatabaseInitializationService.cs`
+- **Location**: `AcadSync.Audit/Services/DatabaseInitializationService.cs`
 - **Interface**: `IDatabaseInitializationService`
 - **Purpose**: Handles automatic creation of audit database objects on application startup
 
 ### 2. Idempotent SQL Script
-- **Location**: `AcadSync.Processor/SqlScripts/CreateAuditTable.sql`
+- **Location**: `AcadSync.Audit/SqlScripts/CreateAuditDatabase.sql`
 - **Features**:
   - Safe to run multiple times (idempotent)
   - Creates database if it doesn't exist
@@ -107,9 +107,9 @@ The auto-initialization runs automatically when the application starts. No manua
 
 ```
 🔧 Initializing database...
-info: AcadSync.Processor.DatabaseInitializationService[0]
+info: AcadSync.Audit.Services.DatabaseInitializationService[0]
       Starting database initialization...
-info: AcadSync.Processor.DatabaseInitializationService[0]
+info: AcadSync.Audit.Services.DatabaseInitializationService[0]
       Database initialization completed successfully.
 ```
 

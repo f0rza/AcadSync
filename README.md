@@ -1,6 +1,6 @@
 # AcadSync
 
-Keep Anthology Student Extended Properties clean and compliant: scan, validate, and auto-repair with audit. YAML rules, simulate mode, dashboards and alerts. Built with .NET 8/Azure; deploy SaaS or on-prem.
+Keep Anthology Student Extended Properties clean and compliant: scan, validate, and auto-repair with audit. YAML rules, simulate mode, and comprehensive logging. Built with .NET 8 for on-premises deployment.
 
 ## 🚀 Recent Updates
 
@@ -62,13 +62,35 @@ The AcadSync.Processor has been completely refactored to improve maintainability
 ```
 AcadSync/
 ├── AcadSync.App/              # Console application & entry point
+│   ├── Program.cs            # Main application entry point
+│   ├── appsettings.json      # Application configuration
+│   ├── rules.yaml            # Business rules configuration
+│   └── test-rules.yaml       # Test rules for development
 ├── AcadSync.Processor/        # Core validation & repair engine (REFACTORED ✨)
 │   ├── Interfaces/           # Clean service contracts
+│   │   ├── IValidationService.cs
+│   │   ├── IRepairService.cs
+│   │   ├── IRevertService.cs
+│   │   └── IRuleEngine.cs
 │   ├── Services/             # Modular, injectable services
+│   │   ├── ValidationOrchestrator.cs
+│   │   ├── RepairService.cs
+│   │   ├── RevertService.cs
+│   │   └── RuleEngine.cs
 │   ├── Configuration/        # Strongly-typed settings
-│   └── Models/Results/       # Rich result objects
+│   ├── Models/               # Domain and result models
+│   ├── Repositories/         # Data access layer
+│   ├── SqlScripts/          # Database initialization scripts
+│   └── Utilities/           # Helper classes and utilities
 ├── AcadSync.Audit/           # Audit trail & compliance tracking
-└── Documentation/            # Comprehensive guides & examples
+│   ├── Interfaces/          # Audit service contracts
+│   ├── Repositories/        # Audit data access
+│   ├── Services/            # Audit business logic
+│   ├── Models/              # Audit data models
+│   ├── Extensions/          # Extension methods
+│   └── SqlScripts/          # Audit database schema
+├── slnAcadSync.sln          # Visual Studio solution file
+└── README files             # Comprehensive documentation
 ```
 
 ## ⚡ Quick Start
@@ -204,12 +226,19 @@ dotnet run
 ```
 
 ### Testing
+
+**Note**: Currently, this project does not have a comprehensive test suite. The refactored architecture with dependency injection makes it well-suited for unit testing, but tests have not yet been implemented.
+
+**Planned Testing Structure**:
 ```bash
-# Run all tests
+# Future test commands (when tests are added)
 dotnet test
 
 # Run with coverage
 dotnet test --collect:"XPlat Code Coverage"
+
+# Run integration tests
+dotnet test --filter Category=Integration
 ```
 
 ## 🤝 Contributing

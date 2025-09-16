@@ -56,7 +56,7 @@ class Program
                 });
 
                 services.AddScoped<IDatabaseInitializationService, DatabaseInitializationService>();
-                services.AddScoped<RefactoredExtPropValidationService>();
+                services.AddScoped<ExtPropValidationService>();
             })
             .Build();
 
@@ -70,7 +70,7 @@ class Program
             await dbInitService.InitializeAsync();
             Console.WriteLine();
             
-            var validationService = scope.ServiceProvider.GetRequiredService<RefactoredExtPropValidationService>();
+            var validationService = scope.ServiceProvider.GetRequiredService<ExtPropValidationService>();
 
             // Parse command line arguments
             var mode = args.Length > 0 ? args[0].ToLowerInvariant() : "revert"; // todo: revert - "demo";
@@ -174,7 +174,7 @@ class Program
         }
     }
 
-    static async Task RunDemoAsync(RefactoredExtPropValidationService service)
+    static async Task RunDemoAsync(ExtPropValidationService service)
     {
         Console.WriteLine("🚀 Running Demo with Sample Data");
         Console.WriteLine("================================");
@@ -275,7 +275,7 @@ class Program
         Console.WriteLine("   • Customize rules.yaml for your institution's requirements");
     }
 
-    static async Task RunValidationAsync(RefactoredExtPropValidationService service, bool simulate)
+    static async Task RunValidationAsync(ExtPropValidationService service, bool simulate)
     {
         var mode = simulate ? "Simulation" : "Validation";
         Console.WriteLine($"🔍 Running {mode} Mode");
@@ -307,7 +307,7 @@ class Program
         }
     }
 
-    static async Task RunRepairAsync(RefactoredExtPropValidationService service)
+    static async Task RunRepairAsync(ExtPropValidationService service)
     {
         Console.WriteLine("🔧 Running Repair Mode");
         Console.WriteLine("=====================");
@@ -337,7 +337,7 @@ class Program
         }
     }
 
-    static async Task RunRevertAsync(RefactoredExtPropValidationService service, long? runId, DateTimeOffset? fromDate, bool force, bool dryRun)
+    static async Task RunRevertAsync(ExtPropValidationService service, long? runId, DateTimeOffset? fromDate, bool force, bool dryRun)
     {
         Console.WriteLine("🔄 Running Revert Mode");
         Console.WriteLine("=====================");
