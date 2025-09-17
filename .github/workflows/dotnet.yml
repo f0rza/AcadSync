@@ -24,8 +24,7 @@ jobs:
       run: dotnet restore
     - name: Build
       run: dotnet build --no-restore
+
     - name: Test with coverage
       run: dotnet test --no-build --verbosity normal /p:CollectCoverage=true /p:CoverletOutputFormat=lcov /p:CoverletOutput=TestResults/
-
-    - name: Test
-      run: dotnet test --no-build --verbosity normal
+      
