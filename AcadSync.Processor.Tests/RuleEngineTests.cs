@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Moq;
 using AcadSync.Processor.Services;
-using AcadSync.Processor.Interfaces;
 using AcadSync.Processor.Models.Domain;
 using AcadSync.Processor.Models.Projections;
 using FluentAssertions;
