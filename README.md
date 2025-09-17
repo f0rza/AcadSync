@@ -227,19 +227,36 @@ dotnet run
 
 ### Testing
 
-**Note**: Currently, this project does not have a comprehensive test suite. The refactored architecture with dependency injection makes it well-suited for unit testing, but tests have not yet been implemented.
+This repository includes multiple test projects (unit and integration tests) that are part of the solution:
 
-**Planned Testing Structure**:
+- `AcadSync.Processor.Tests`
+- `AcadSync.Audit.Tests`
+- `AcadSync.App.Tests`
+
+Run all tests for the solution:
 ```bash
-# Future test commands (when tests are added)
 dotnet test
-
-# Run with coverage
-dotnet test --collect:"XPlat Code Coverage"
-
-# Run integration tests
-dotnet test --filter Category=Integration
 ```
+
+Run a specific test project:
+```bash
+dotnet test AcadSync.Processor.Tests/AcadSync.Processor.Tests.csproj
+```
+
+Run only integration tests (tests marked with `Category=Integration`):
+```bash
+dotnet test --filter "Category=Integration"
+```
+
+Run tests with code coverage (XPlat collector):
+```bash
+dotnet test --collect:"XPlat Code Coverage"
+```
+
+Notes:
+- Tests in this repository use MSTest (see `MSTestSettings` files in the test projects).
+- Test results and coverage outputs are written under each test project's `TestResults/` directory by default.
+- To run tests from within Visual Studio, open `slnAcadSync.sln` and run Test Explorer.
 
 ## 🚀 Future Plans / Roadmap
 
