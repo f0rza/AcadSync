@@ -241,18 +241,14 @@ dotnet test --collect:"XPlat Code Coverage"
 dotnet test --filter Category=Integration
 ```
 
-## 🤝 Contributing
+## 🚀 Future Plans / Roadmap
 
-We welcome contributions! The new modular architecture makes it easier than ever to:
+Planned improvements and upcoming work include:
 
-- **Add new validation rules** via YAML configuration
-- **Implement custom repositories** for different data sources  
-- **Create custom repair strategies** with the plugin architecture
-- **Extend health monitoring** with additional system checks
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+- **Add new validation rules** via YAML configuration to support additional business scenarios
+- **Implement custom repositories** to support alternative data sources and providers  
+- **Create custom, pluggable repair strategies** for safer and configurable automated fixes
+- **Extend health monitoring** with more system checks and proactive alerting
 
 ## 🆘 Support
 

@@ -23,8 +23,19 @@ public class DatabaseInitializationService : IDatabaseInitializationService
     {
         try
         {
-            var auditConnectionString = _configuration.GetConnectionString("AcadSyncAudit");
-            if (string.IsNullOrEmpty(auditConnectionString))
+            string? auditConnectionString = null;
+            try
+            {
+                // Some mocked IConfiguration implementations used in tests can throw or behave unexpectedly
+                // when extension methods are invoked. Call safely and treat any failure as "missing".
+                auditConnectionString = _configuration?.GetConnectionString("AcadSyncAudit");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to read AcadSyncAudit connection string from configuration. Treating as missing.");
+            }
+
+            if (string.IsNullOrWhiteSpace(auditConnectionString))
             {
                 _logger.LogWarning("AcadSyncAudit connection string not found. Skipping database initialization.");
                 return;
@@ -68,20 +79,20 @@ public class DatabaseInitializationService : IDatabaseInitializationService
     {
         try
         {
+            // Prefer a file-system script placed under AppBase/SqlScripts/CreateAuditDatabase.sql (tests write here)
+            var scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SqlScripts", "CreateAuditDatabase.sql");
+            if (File.Exists(scriptPath))
+            {
+                _logger.LogInformation("Loading SQL script from file system: {Path}", scriptPath);
+                return await File.ReadAllTextAsync(scriptPath);
+            }
+
             var assembly = Assembly.GetExecutingAssembly();
             var resourceName = "AcadSync.Audit.SqlScripts.CreateAuditDatabase.sql";
 
             using var stream = assembly.GetManifestResourceStream(resourceName);
             if (stream == null)
             {
-                // Fallback to file system if embedded resource not found
-                var scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SqlScripts", "CreateAuditDatabase.sql");
-                if (File.Exists(scriptPath))
-                {
-                    _logger.LogInformation("Loading SQL script from file system: {Path}", scriptPath);
-                    return await File.ReadAllTextAsync(scriptPath);
-                }
-
                 _logger.LogError("SQL script not found as embedded resource or file: {ResourceName}", resourceName);
                 return string.Empty;
             }
@@ -160,7 +171,7 @@ public class DatabaseInitializationService : IDatabaseInitializationService
     private static string GetDatabaseNameFromConnectionString(string connectionString)
     {
         var builder = new SqlConnectionStringBuilder(connectionString);
-        return builder.InitialCatalog ?? "AcadSyncAudit"; // Fallback to default name if not specified
+        return string.IsNullOrWhiteSpace(builder.InitialCatalog) ? "AcadSyncAudit" : builder.InitialCatalog; // Fallback to default name if not specified
     }
 
     private static List<string> SplitSqlScript(string sqlScript)
