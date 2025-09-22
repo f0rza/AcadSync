@@ -7,6 +7,12 @@ using AcadSync.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// When running in Development, explicitly bind Kestrel to both HTTP and HTTPS so Swagger is reachable on http://localhost:5000 and https://localhost:5001
+if (builder.Environment.IsDevelopment())
+{
+    builder.WebHost.UseUrls("http://localhost:5000", "https://localhost:5001");
+}
+
 // Configuration & Logging
 var configuration = builder.Configuration;
 builder.Logging.AddConsole();
@@ -50,10 +56,15 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Middleware
+ // Middleware
 if (app.Environment.IsDevelopment())
 {
     app.UseDeveloperExceptionPage();
+}
+
+// Enable Swagger when explicitly allowed via configuration (AcadSync:EnableSwagger = true)
+if (configuration.GetValue<bool>("AcadSync:EnableSwagger"))
+{
     app.UseSwagger();
     app.UseSwaggerUI();
 }
