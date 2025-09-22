@@ -62,10 +62,41 @@ if (app.Environment.IsDevelopment())
     app.UseDeveloperExceptionPage();
 }
 
-// Enable Swagger when explicitly allowed via configuration (AcadSync:EnableSwagger = true)
+ // Enable Swagger when explicitly allowed via configuration (AcadSync:EnableSwagger = true)
 if (configuration.GetValue<bool>("AcadSync:EnableSwagger"))
 {
+    // Register the OpenAPI generator
     app.UseSwagger();
+
+    // Protect Swagger UI and endpoints:
+    //  - Only allow requests from loopback addresses (localhost)
+    //  - Require an authenticated user (cookie auth)
+    app.UseWhen(ctx => ctx.Request.Path.StartsWithSegments("/swagger"), appBranch =>
+    {
+        appBranch.Use(async (ctx, next) =>
+        {
+            // Restrict to loopback (localhost) only
+            var remote = ctx.Connection.RemoteIpAddress;
+            if (remote == null || !System.Net.IPAddress.IsLoopback(remote))
+            {
+                ctx.Response.StatusCode = Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden;
+                await ctx.Response.WriteAsync("Forbidden");
+                return;
+            }
+
+            // Require authentication
+            if (!(ctx.User?.Identity?.IsAuthenticated ?? false))
+            {
+                // Return 401 - caller can then authenticate via the web login
+                ctx.Response.StatusCode = Microsoft.AspNetCore.Http.StatusCodes.Status401Unauthorized;
+                await ctx.Response.WriteAsync("Unauthorized - please sign in");
+                return;
+            }
+
+            await next();
+        });
+    });
+
     app.UseSwaggerUI();
 }
 
@@ -82,5 +113,13 @@ app.MapHub<RunsHub>("/hubs/runs");
 
 // Fallback to index.html for SPA routes
 app.MapFallbackToFile("index.html");
+
+// Seed initial data (admin user) if configured
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    // Run seeding synchronously during startup
+    AcadSync.Web.Data.SeedData.EnsureAdminAsync(services, configuration).GetAwaiter().GetResult();
+}
 
 app.Run();
