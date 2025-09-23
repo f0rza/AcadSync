@@ -14,10 +14,16 @@ export default function RulesList() {
   async function loadRules() {
     setLoading(true);
     setError(null);
-    try {
+      try {
       const res = await axios.get("/api/rules");
-      setRules(res.data || []);
-    } catch (ex: any) {
+      if (Array.isArray(res.data)) {
+        setRules(res.data);
+      } else {
+        // Backend returned unexpected shape — protect against runtime errors and log for debugging
+        console.warn("Expected rules array from /api/rules but received:", res.data);
+        setRules([]);
+      }
+      } catch (ex: any) {
       setError(ex?.response?.data?.message || ex.message || "Failed to load rules");
     } finally {
       setLoading(false);
